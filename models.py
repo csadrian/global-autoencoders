@@ -2,8 +2,10 @@
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.nn.init as init
 from torch.autograd import Variable
+
 
 
 class View(nn.Module):
@@ -17,10 +19,11 @@ class View(nn.Module):
 
 class WAE(nn.Module):
     """Encoder-Decoder architecture for both WAE-MMD and WAE-GAN."""
-    def __init__(self, z_dim=10, nc=3):
+    def __init__(self, z_dim=64, nc=3, input_normalize_sym=False):
         super(WAE, self).__init__()
         self.z_dim = z_dim
         self.nc = nc
+        self.input_normalize_sym = input_normalize_sym
         self.encoder = nn.Sequential(
             nn.Conv2d(nc, 128, 4, 2, 1, bias=False),              # B,  128, 32, 32
             nn.BatchNorm2d(128),
@@ -68,7 +71,11 @@ class WAE(nn.Module):
         return self.encoder(x)
 
     def _decode(self, z):
-        return self.decoder(z)
+        xd = self.decoder(z)
+        if self.input_normalize_sym:
+            return F.tanh(xd)
+        else:
+            return F.sigmoid(xd)
 
 
 class Adversary(nn.Module):

@@ -61,16 +61,15 @@ class ExperimentRunner():
 
         self.train_loader = torch.utils.data.DataLoader(
             datasets.CelebA(self.datadir, split='train', target_type='attr', download=True,
-                transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+                transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor()])#, transforms.Normalize((0.1307,), (0.3081,))])
             ),
             batch_size=self.batch_size, shuffle=True, **self.dataloader_kwargs)
  
         self.test_loader = torch.utils.data.DataLoader(
             datasets.CelebA(self.datadir, split='test', target_type='attr', download=True,
-                transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor(), transforms.Normalize((0.1307,), (0.3081,))])
+                transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor()])#, transforms.Normalize((0.1307,), (0.3081,))])
             ),
             batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
-        
 
     def train(self): 
         self.setup_data_loaders()
