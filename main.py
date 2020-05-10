@@ -18,10 +18,12 @@ import models
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
 
+from datasets import DatasetWithIndices
+
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, outdir='out', datadir='~/datasets', batch_size=64):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, outdir='out', datadir='~/datasets', batch_size=200, prefix=''):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -30,14 +32,14 @@ class ExperimentRunner():
         self.outdir = outdir
         self.datadir = datadir
         self.batch_size = batch_size
+        self.prefix = prefix
 
         self.setup_environment()
         self.setup_torch()
-        self.setup_trainers()
 
     def setup_environment(self):
-        self.imagesdir = os.path.join(self.outdir, 'images')
-        self.chkptdir = os.path.join(self.outdir, 'models')
+        self.imagesdir = os.path.join(self.outdir, self.prefix, 'images')
+        self.chkptdir = os.path.join(self.outdir, self.prefix, 'models')
         os.makedirs(self.datadir, exist_ok=True)
         os.makedirs(self.imagesdir, exist_ok=True)
         os.makedirs(self.chkptdir, exist_ok=True)
@@ -50,36 +52,37 @@ class ExperimentRunner():
             torch.cuda.manual_seed(self.seed)
 
         self.device = torch.device("cuda" if use_cuda else "cpu")
-        self.dataloader_kwargs = {'num_workers': 1, 'pin_memory': True} if use_cuda else {'num_workers': self.num_workers, 'pin_memory': False}
+        self.dataloader_kwargs = {'num_workers': 3, 'pin_memory': True} if use_cuda else {'num_workers': self.num_workers, 'pin_memory': False}
     
     def setup_trainers(self):
         self.model = models.WAE()
         self.model.to(self.device)
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader)
 
     def setup_data_loaders(self):
 
-        self.train_loader = torch.utils.data.DataLoader(
+        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(
             datasets.CelebA(self.datadir, split='train', target_type='attr', download=True,
                 transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor()])#, transforms.Normalize((0.1307,), (0.3081,))])
-            ),
-            batch_size=self.batch_size, shuffle=True, **self.dataloader_kwargs)
+            )),
+            batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
  
-        self.test_loader = torch.utils.data.DataLoader(
+        self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(
             datasets.CelebA(self.datadir, split='test', target_type='attr', download=True,
                 transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor()])#, transforms.Normalize((0.1307,), (0.3081,))])
-            ),
+            )),
             batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
 
     def train(self): 
         self.setup_data_loaders()
+        self.setup_trainers()
 
         iteration = 0
         for self.epoch in range(self.epochs):
-            for batch_idx, (x, y) in enumerate(self.train_loader, start=0):
+            for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                 iteration += 1
 
-                batch = self.trainer.train_on_batch(x)
+                batch = self.trainer.train_on_batch(x, idx)
                 if (batch_idx + 1) % self.log_interval == 0:
                     print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(iteration, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                     self.test()
@@ -105,7 +108,7 @@ class ExperimentRunner():
         
         """
         with torch.no_grad():
-            for test_batch_idx, (x_test, y_test) in enumerate(self.test_loader, start=0):
+            for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
                 test_evals = self.trainer.test_on_batch(x_test)
                 test_encode.append(test_evals['encode'].detach())
                 test_loss += test_evals['loss'].item()
@@ -141,7 +144,7 @@ def main(argv):
     else:
         neptune.init('shared/onboarding', api_token='ANONYMOUS', backend=neptune.OfflineBackend())
 
-    er = ExperimentRunner()
+    er = ExperimentRunner(prefix=exp.id)
     er.train()
 
     neptune.stop()
