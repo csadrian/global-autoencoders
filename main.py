@@ -106,6 +106,7 @@ class ExperimentRunner():
                     neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
                     neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
                     neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
+                    neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
 
                 if self.global_iters % self.plot_interval == 0:
                     self.test()

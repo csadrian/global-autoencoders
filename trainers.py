@@ -66,6 +66,7 @@ class SinkhornTrainer:
             'loss': loss,
             'reg_loss': reg_loss,
             'rec_loss': bce,
+            'reg_lambda': self.reg_lambda,
             'encode': z,
             'decode': recon_x
         }
