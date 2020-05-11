@@ -1,0 +1,3 @@
+ExperimentRunner.distribution = 'uniform'
+ExperimentRunner.ae_model_class = @models.MnistModel
+SinkhornTrainer.reg_lambda = 0.0

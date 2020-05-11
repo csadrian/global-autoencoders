@@ -6,6 +6,7 @@ import torch.nn.functional as F
 import torch.nn.init as init
 from torch.autograd import Variable
 
+import gin
 
 
 class View(nn.Module):
@@ -16,7 +17,7 @@ class View(nn.Module):
     def forward(self, tensor):
         return tensor.view(self.size)
 
-
+@gin.configurable
 class WAE(nn.Module):
     """Encoder-Decoder architecture for both WAE-MMD and WAE-GAN."""
     def __init__(self, z_dim=64, nc=3, input_normalize_sym=False):
@@ -50,6 +51,60 @@ class WAE(nn.Module):
             nn.BatchNorm2d(256),
             nn.ReLU(True),
             nn.ConvTranspose2d(256, 128, 4, 2, 1, bias=False),    # B,  128, 64, 64
+            nn.BatchNorm2d(128),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(128, nc, 1),                       # B,   nc, 64, 64
+        )
+        self.weight_init()
+
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+
+    def forward(self, x):
+        z = self._encode(x)
+        x_recon = self._decode(z)
+
+        return x_recon, z
+
+    def _encode(self, x):
+        return self.encoder(x)
+
+    def _decode(self, z):
+        xd = self.decoder(z)
+        if self.input_normalize_sym:
+            return F.tanh(xd)
+        else:
+            return F.sigmoid(xd)
+
+
+
+@gin.configurable
+class MnistModel(nn.Module):
+    """Encoder-Decoder architecture for MINST-like datasets."""
+    def __init__(self, z_dim=10, nc=1, input_normalize_sym=False):
+        super(MnistModel, self).__init__()
+        self.z_dim = z_dim
+        self.nc = nc
+        self.input_normalize_sym = input_normalize_sym
+        self.encoder = nn.Sequential(
+            nn.Conv2d(nc, 32, 4, 2, 1, bias=False),              # B,  128, 14, 14
+            nn.BatchNorm2d(32),
+            nn.ReLU(True),
+            nn.Conv2d(32, 64, 4, 2, 1, bias=False),              # B,  256, 7, 7
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            View((-1, 64*7*7)),                                   # B, 64*4*4
+            nn.Linear(64*7*7, z_dim)                            # B, z_dim
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(z_dim, 64*7*7),                           # B, 64*7*7
+            View((-1, 64, 7, 7)),                               # B, 64,  7,  7
+            nn.ConvTranspose2d(64, 64, 4, 2, 1, bias=False),   # B,  64, 14, 14
+            nn.BatchNorm2d(64),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(64, 128, 4, 2, 1, bias=False),    # B,  256, 28, 28
             nn.BatchNorm2d(128),
             nn.ReLU(True),
             nn.ConvTranspose2d(128, nc, 1),                       # B,   nc, 64, 64

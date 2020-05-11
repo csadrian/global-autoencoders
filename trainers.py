@@ -14,10 +14,10 @@ import gin.torch
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution_class=torch.distributions.multivariate_normal.MultivariateNormal, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None):
+    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None):
         self.model = model
         self.device = device
-        self.distribution = distribution_class(torch.zeros(self.model.z_dim), torch.eye(self.model.z_dim))
+        self.distribution = distribution
         #self.z_dim = self.autoencoder.z_dim
         self.reg_lambda = reg_lambda
         self.batch_size = batch_size
@@ -27,6 +27,7 @@ class SinkhornTrainer:
         if nat_size is None:
             nat_size = len(train_loader)
         self.nat_size = nat_size
+
 
     def sample_pz(self, n=100):
         return self.distribution.sample(torch.Size([n]))
@@ -46,18 +47,17 @@ class SinkhornTrainer:
 
         self.recalculate_latents()
 
-        #reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05)
-        #pz_sample = self.sample_pz(z.size()[0]).to(self.device)
-        #reg_loss = reg_loss_fn(z, pz_sample)  # By default, use constant weights = 1/number of samples
-
-        #reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
-        reg_loss_fn = SamplesLoss(loss="gaussian", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
+        reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling=0.3, verbose=True)
+        #reg_loss_fn = SamplesLoss(loss="gaussian", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
         pz_sample = self.sample_pz(self.nat_size).to(self.device)
         
         print(curr_indices)
         z_prime = self.x_latents[curr_indices] = z
 
-        reg_loss = reg_loss_fn(z_prime, pz_sample.detach())  # By default, use constant weights = 1/number of samples
+        if self.reg_lambda != 0.0:
+            reg_loss = reg_loss_fn(z_prime, pz_sample.detach())  # By default, use constant weights = 1/number of samples
+        else:
+            reg_loss = 0.0
 
         loss = bce + float(self.reg_lambda) * reg_loss
 
@@ -78,6 +78,7 @@ class SinkhornTrainer:
         return result
 
     def recalculate_latents(self):
+
         x_latents_a = list()
         it = 0
         for batch_idx, (x, y, idx) in enumerate(self.train_loader):

@@ -18,12 +18,14 @@ import models
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
 
+import utils
+
 from datasets import DatasetWithIndices
 
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, outdir='out', datadir='~/datasets', batch_size=200, prefix=''):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -33,6 +35,9 @@ class ExperimentRunner():
         self.datadir = datadir
         self.batch_size = batch_size
         self.prefix = prefix
+        self.distribution = distribution
+        self.dataset = dataset
+        self.ae_model_class = ae_model_class
 
         self.setup_environment()
         self.setup_torch()
@@ -53,60 +58,74 @@ class ExperimentRunner():
 
         self.device = torch.device("cuda" if use_cuda else "cpu")
         self.dataloader_kwargs = {'num_workers': 3, 'pin_memory': True} if use_cuda else {'num_workers': self.num_workers, 'pin_memory': False}
-    
+        print(self.device)
+
     def setup_trainers(self):
-        self.model = models.WAE()
+        nc = 1 if self.dataset in ('mnist') else 3
+        self.model = self.ae_model_class(nc=nc)
         self.model.to(self.device)
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader)
+        if self.distribution == 'normal':
+            #dist = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(self.model.z_dim), torcg.eye(self.model.z_dim))
+            base_dist = torch.distributions.normal.Normal(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
+            dist = torch.distributions.independent.Independent(base_dist, 1)
+        elif self.distribution == 'uniform':
+            base_dist = torch.distributions.uniform.Uniform(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
+            dist = torch.distributions.independent.Independent(base_dist, 1)
+        else:
+            raise Exception('Distribution not implemented')
+        print(dist.sample(torch.Size([5])))
+
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, distribution=dist)
 
     def setup_data_loaders(self):
 
-        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(
-            datasets.CelebA(self.datadir, split='train', target_type='attr', download=True,
-                transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor()])#, transforms.Normalize((0.1307,), (0.3081,))])
-            )),
-            batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
- 
-        self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(
-            datasets.CelebA(self.datadir, split='test', target_type='attr', download=True,
-                transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor()])#, transforms.Normalize((0.1307,), (0.3081,))])
-            )),
-            batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
+        if self.dataset == 'celeba':
+            train_dataset = datasets.CelebA(self.datadir, split='train', target_type='attr', download=True, transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor()]))
+            test_dataset = datasets.CelebA(self.datadir, split='test', target_type='attr', download=True, transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor()]))
+        elif self.dataset == 'mnist':
+            train_dataset = datasets.MNIST(self.datadir, train=True, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+            test_dataset = datasets.MNIST(self.datadir, train=False, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+        else:
+            raise Exception("Dataset not found: " + dataset)
+
+        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(train_dataset), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
+        self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(test_dataset), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
 
     def train(self): 
         self.setup_data_loaders()
         self.setup_trainers()
 
-        iteration = 0
+        self.global_iters = 0
         for self.epoch in range(self.epochs):
             for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
-                iteration += 1
+                self.global_iters += 1
 
                 batch = self.trainer.train_on_batch(x, idx)
                 if (batch_idx + 1) % self.log_interval == 0:
-                    print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(iteration, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
+                    print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                     self.test()
 
-    def plot_latent_mnist(self, test_encode, test_targets, test_loss):
+    def plot_latent_2d(self, test_encode, test_targets, test_loss):
         # save encoded samples plot
         plt.figure(figsize=(10, 10))
-        plt.scatter(test_encode[:, 0], -test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
+        plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
         plt.xlim([-1.5, 1.5])
         plt.ylim([-1.5, 1.5])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
-        plt.savefig('{}/test_latent_epoch_{}.png'.format(self.imagesdir, epoch + 1))
+        filename = '{}/test_latent_epoch_{}.png'.format(self.imagesdir, epoch + 1)
+        plt.savefig(filename)
         plt.close()
+        neptune.send_image('plot_latent_2d', x=self.global_iters, y=filename)
 
     def plot_images(self, x, train_rec, test_rec, gen):
-        vutils.save_image(x, '{}/test_samples_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
-        vutils.save_image(train_rec.detach(), '{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
-        vutils.save_image(test_rec.detach(), '{}/test_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
-        vutils.save_image(gen.detach(), '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
+        utils.save_image(x, 'test_samples', self.global_iters, '{}/test_samples_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+        utils.save_image(train_rec.detach(), 'train_reconstructions', self.global_iters, '{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
+        utils.save_image(test_rec.detach(), 'test_reconstructions', self.global_iters, '{}/test_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
+        utils.save_image(gen.detach(), 'generated', self.global_iters, '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
 
     def test(self):
         test_encode, test_targets, test_loss = list(), list(), 0.0
         
-        """
         with torch.no_grad():
             for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
                 test_evals = self.trainer.test_on_batch(x_test)
@@ -115,18 +134,15 @@ class ExperimentRunner():
                 test_targets.append(y_test)
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
         test_loss /= len(self.test_loader)
-        print('Test Epoch: {} ({:.2f}%)\tLoss: {:.6f}'.format(
-                self.epoch + 1, float(self.epoch + 1) / (self.epochs) * 100.,
-                test_loss))
-        print('{{"metric": "loss", "value": {}}}'.format(test_loss))
-        """ 
-        #self.plot_latent(test_encode, test_targets, test_loss)
+        print('Test Epoch: {} ({:.2f}%)\tLoss: {:.6f}'.format(self.epoch + 1, float(self.epoch + 1) / (self.epochs) * 100., test_loss))
+        
+        self.plot_latent_2d(test_encode, test_targets, test_loss)
     
-        test_batch, (x, y) = enumerate(self.test_loader, start=0).__next__()
-        test_batch = self.trainer.test_on_batch(x)
+        test_batch, (x, y, idx) = enumerate(self.test_loader, start=0).__next__()
+        test_batch = self.trainer.test_on_batch(x, idx)
 
-        train_batch, (x, y) = enumerate(self.train_loader, start=0).__next__()
-        train_batch = self.trainer.test_on_batch(x)
+        train_batch, (x, y, idx) = enumerate(self.train_loader, start=0).__next__()
+        train_batch = self.trainer.test_on_batch(x, idx)
         gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
         self.plot_images(x, train_batch['decode'], test_batch['decode'], gen_batch['decode'])
 
