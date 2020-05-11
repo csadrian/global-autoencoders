@@ -65,6 +65,7 @@ class SinkhornTrainer:
         return {
             'loss': loss,
             'reg_loss': reg_loss,
+            'rec_loss': bce,
             'encode': z,
             'decode': recon_x
         }

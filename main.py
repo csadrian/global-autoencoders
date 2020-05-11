@@ -100,10 +100,13 @@ class ExperimentRunner():
         for self.epoch in range(self.epochs):
             for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                 self.global_iters += 1
-
                 batch = self.trainer.train_on_batch(x, idx)
                 if self.global_iters % self.log_interval == 0:
                     print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
+                    neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
+                    neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
+                    neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
+
                 if self.global_iters % self.plot_interval == 0:
                     self.test()
 
@@ -126,17 +129,27 @@ class ExperimentRunner():
         utils.save_image(gen.detach(), 'generated', self.global_iters, '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
 
     def test(self):
-        test_encode, test_targets, test_loss = list(), list(), 0.0
+        test_encode, test_targets, test_loss, test_reg_loss, test_rec_loss = list(), list(), 0.0, 0.0, 0.0
         
         with torch.no_grad():
             for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
                 test_evals = self.trainer.test_on_batch(x_test, idx)
                 test_encode.append(test_evals['encode'].detach())
                 test_loss += test_evals['loss'].item()
+                test_reg_loss += test_evals['reg_loss'].item()
+                test_rec_loss += test_evals['rec_loss'].item()
+
                 test_targets.append(y_test)
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
         test_loss /= len(self.test_loader)
+        test_rec_loss /= len(self.test_loader)
+        test_reg_loss /= len(self.test_loader)
+
         print('Test Epoch: {} ({:.2f}%)\tLoss: {:.6f}'.format(self.epoch + 1, float(self.epoch + 1) / (self.epochs) * 100., test_loss))
+
+        neptune.send_metric('test_loss', x=self.global_iters, y=test_loss)
+        neptune.send_metric('test_reg_loss', x=self.global_iters, y=test_reg_loss)
+        neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         
         self.plot_latent_2d(test_encode, test_targets, test_loss)
     
