@@ -28,6 +28,8 @@ class SinkhornTrainer:
             nat_size = len(train_loader)
         self.nat_size = nat_size
 
+        self.x_latents = torch.zeros(torch.Size([len(self.train_loader), self.model.z_dim])).to(self.device).detach()
+        print(self.x_latents)
 
     def sample_pz(self, n=100):
         return self.distribution.sample(torch.Size([n]))
@@ -49,17 +51,16 @@ class SinkhornTrainer:
 
         reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling=0.3, verbose=True)
         #reg_loss_fn = SamplesLoss(loss="gaussian", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
-        pz_sample = self.sample_pz(self.nat_size).to(self.device)
-        
-        print(curr_indices)
-        z_prime = self.x_latents[curr_indices] = z
+                
+        loss = bce
 
         if self.reg_lambda != 0.0:
+            pz_sample = self.sample_pz(self.nat_size).to(self.device)
+            z_prime = self.x_latents[curr_indices] = z
             reg_loss = reg_loss_fn(z_prime, pz_sample.detach())  # By default, use constant weights = 1/number of samples
+            loss += float(self.reg_lambda) * reg_loss
         else:
             reg_loss = 0.0
-
-        loss = bce + float(self.reg_lambda) * reg_loss
 
         return {
             'loss': loss,
@@ -78,6 +79,9 @@ class SinkhornTrainer:
         return result
 
     def recalculate_latents(self):
+
+        if self.reg_lambda == 0.0:
+            return
 
         x_latents_a = list()
         it = 0

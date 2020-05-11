@@ -25,12 +25,13 @@ from datasets import DatasetWithIndices
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
         self.epochs = epochs
         self.log_interval = log_interval
+        self.plot_interval = plot_interval
         self.outdir = outdir
         self.datadir = datadir
         self.batch_size = batch_size
@@ -69,7 +70,7 @@ class ExperimentRunner():
             base_dist = torch.distributions.normal.Normal(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
             dist = torch.distributions.independent.Independent(base_dist, 1)
         elif self.distribution == 'uniform':
-            base_dist = torch.distributions.uniform.Uniform(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
+            base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
             dist = torch.distributions.independent.Independent(base_dist, 1)
         else:
             raise Exception('Distribution not implemented')
@@ -101,8 +102,9 @@ class ExperimentRunner():
                 self.global_iters += 1
 
                 batch = self.trainer.train_on_batch(x, idx)
-                if (batch_idx + 1) % self.log_interval == 0:
+                if self.global_iters % self.log_interval == 0:
                     print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
+                if self.global_iters % self.plot_interval == 0:
                     self.test()
 
     def plot_latent_2d(self, test_encode, test_targets, test_loss):
@@ -112,7 +114,7 @@ class ExperimentRunner():
         plt.xlim([-1.5, 1.5])
         plt.ylim([-1.5, 1.5])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
-        filename = '{}/test_latent_epoch_{}.png'.format(self.imagesdir, epoch + 1)
+        filename = '{}/test_latent_epoch_{}.png'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)
         plt.close()
         neptune.send_image('plot_latent_2d', x=self.global_iters, y=filename)
@@ -128,7 +130,7 @@ class ExperimentRunner():
         
         with torch.no_grad():
             for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
-                test_evals = self.trainer.test_on_batch(x_test)
+                test_evals = self.trainer.test_on_batch(x_test, idx)
                 test_encode.append(test_evals['encode'].detach())
                 test_loss += test_evals['loss'].item()
                 test_targets.append(y_test)
