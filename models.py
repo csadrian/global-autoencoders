@@ -69,7 +69,11 @@ class WAE(nn.Module):
         return x_recon, z
 
     def _encode(self, x):
-        return self.encoder(x)
+        distribution = gin.REQUIRED
+        if distribution == "sphere":
+            return F.normalize(self.encoder(x), dim=1, p=2)
+        else:
+            return self.encoder(x)
 
     def _decode(self, z):
         xd = self.decoder(z)
@@ -123,7 +127,11 @@ class MnistModel(nn.Module):
         return x_recon, z
 
     def _encode(self, x):
-        return self.encoder(x)
+        distribution = gin.REQUIRED
+        if distribution == "sphere":
+            return F.normalize(self.encoder(x), dim=1, p=2)
+        else:
+            return self.encoder(x)
 
     def _decode(self, z):
         xd = self.decoder(z)

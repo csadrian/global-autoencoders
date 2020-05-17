@@ -65,18 +65,8 @@ class ExperimentRunner():
         nc = 1 if self.dataset in ('mnist') else 3
         self.model = self.ae_model_class(nc=nc)
         self.model.to(self.device)
-        if self.distribution == 'normal':
-            #dist = torch.distributions.multivariate_normal.MultivariateNormal(torch.zeros(self.model.z_dim), torcg.eye(self.model.z_dim))
-            base_dist = torch.distributions.normal.Normal(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
-            dist = torch.distributions.independent.Independent(base_dist, 1)
-        elif self.distribution == 'uniform':
-            base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
-            dist = torch.distributions.independent.Independent(base_dist, 1)
-        else:
-            raise Exception('Distribution not implemented')
-        print(dist.sample(torch.Size([5])))
 
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, distribution=dist)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, distribution=self.distribution)
 
     def setup_data_loaders(self):
 

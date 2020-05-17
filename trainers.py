@@ -32,7 +32,23 @@ class SinkhornTrainer:
         print(self.x_latents)
 
     def sample_pz(self, n=100):
-        return self.distribution.sample(torch.Size([n]))
+        if self.distribution == 'normal' or 'sphere':
+            base_dist = torch.distributions.normal.Normal(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
+            dist = torch.distributions.independent.Independent(base_dist, 1)
+        elif self.distribution == 'uniform':
+            base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
+            dist = torch.distributions.independent.Independent(base_dist, 1)
+        else:
+            raise Exception('Distribution not implemented')
+        #print(dist.sample(torch.Size([5])))
+
+        if self.distribution == 'sphere':
+            s = dist.sample(torch.Size([n]))
+            n = torch.norm(s, p=2, dim=1)[:, np.newaxis]
+            return s / n
+        else:
+            return dist.sample(torch.Size([n]))
+
 
     def decode_batch(self, z):
         z = z.to(self.device)
