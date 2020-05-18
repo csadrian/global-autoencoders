@@ -23,13 +23,25 @@ class SinkhornTrainer:
         self.batch_size = batch_size
         self.optimizer = optimizer(self.model.parameters())
         self.train_loader = train_loader
+        self.monitoring = monitoring
 
+        assert type in {'local', 'global'}, "type has to be `local` or `global`"
+        self.type = type
+
+        # If nat_size unspecified, initialize.
         if nat_size is None:
-            nat_size = len(train_loader)
+            if type == 'global':
+                nat_size = len(train_loader)
+            elif type == 'local':
+                nat_size = batch_size
+
         self.nat_size = nat_size
 
-        self.x_latents = torch.zeros(torch.Size([len(self.train_loader), self.model.z_dim])).to(self.device).detach()
-        print(self.x_latents)
+        # If monitoring, save all x_latents. Otherwise only nat_size many x_latents are required.
+        if monitoring:
+            self.x_latents = torch.zeros(torch.Size([len(train_loader), self.model.z_dim])).to(self.device).detach()
+        else:
+            self.x_latents = torch.zeros(torch.Size([self.nat_size, self.model.z_dim])).to(self.device).detach()
 
     def sample_pz(self, n=100):
         if self.distribution == 'normal' or 'sphere':
@@ -63,7 +75,8 @@ class SinkhornTrainer:
 
         bce = F.mse_loss(recon_x, x)
 
-        self.recalculate_latents()
+        if self.type == 'global' or self.monitoring:
+            self.recalculate_latents()
 
         reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling=0.3, verbose=True)
         #reg_loss_fn = SamplesLoss(loss="gaussian", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
@@ -72,8 +85,14 @@ class SinkhornTrainer:
 
         if self.reg_lambda != 0.0:
             pz_sample = self.sample_pz(self.nat_size).to(self.device)
-            z_prime = self.x_latents[curr_indices] = z
-            reg_loss = reg_loss_fn(z_prime, pz_sample.detach())  # By default, use constant weights = 1/number of samples
+
+            if self.type == 'local':
+                z_prime = z
+            elif self.type == 'global':
+                z_prime = self.x_latents
+
+            reg_loss = reg_loss_fn(z_prime,
+                                   pz_sample.detach())  # By default, use constant weights = 1/number of samples
             loss += float(self.reg_lambda) * reg_loss
         else:
             reg_loss = 0.0
@@ -109,5 +128,6 @@ class SinkhornTrainer:
             x = x.to(self.device)
             x_latents_a.append(self.model._encode(x))
             del x
+            # self.x_latents[idx,:] = self.model._encode(x)
             #print(it, len(self.train_loader))
         self.x_latents = torch.cat(x_latents_a)

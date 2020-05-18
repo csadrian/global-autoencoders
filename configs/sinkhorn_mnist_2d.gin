@@ -1,4 +1,6 @@
 ExperimentRunner.distribution = 'sphere'
 ExperimentRunner.ae_model_class = @models.MnistModel
 SinkhornTrainer.reg_lambda = 1.0
+SinkhornTrainer.type = 'global'
+SinkhornTrainer.monitoring = True
 models.MnistModel.z_dim=2
