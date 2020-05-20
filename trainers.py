@@ -14,7 +14,7 @@ import gin.torch
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None):
+    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None, type='global', monitoring = True):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -31,7 +31,7 @@ class SinkhornTrainer:
         # If nat_size unspecified, initialize.
         if nat_size is None:
             if type == 'global':
-                nat_size = len(train_loader)
+                nat_size = len(train_loader.dataset)
             elif type == 'local':
                 nat_size = batch_size
 
@@ -39,7 +39,7 @@ class SinkhornTrainer:
 
         # If monitoring, save all x_latents. Otherwise only nat_size many x_latents are required.
         if monitoring:
-            self.x_latents = torch.zeros(torch.Size([len(train_loader), self.model.z_dim])).to(self.device).detach()
+            self.x_latents = torch.zeros(torch.Size([len(train_loader.dataset), self.model.z_dim])).to(self.device).detach()
         else:
             self.x_latents = torch.zeros(torch.Size([self.nat_size, self.model.z_dim])).to(self.device).detach()
 
@@ -69,14 +69,15 @@ class SinkhornTrainer:
             'decode': gen_x
         }
 
-    def test_on_batch(self, x, curr_indices):
+    def test_on_batch(self, x, curr_indices, batch_index = None):        
         x = x.to(self.device)
         recon_x, z = self.model(x)
 
-        bce = F.mse_loss(recon_x, x)
-
         if self.type == 'global' or self.monitoring:
-            self.recalculate_latents()
+            self.recalculate_latents(batch_index)
+            self.x_latents = torch.cat((self.x_latents, z), dim=0)
+        
+        bce = F.mse_loss(recon_x, x)
 
         reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling=0.3, verbose=True)
         #reg_loss_fn = SamplesLoss(loss="gaussian", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
@@ -91,8 +92,8 @@ class SinkhornTrainer:
             elif self.type == 'global':
                 z_prime = self.x_latents
 
-            reg_loss = reg_loss_fn(z_prime,
-                                   pz_sample.detach())  # By default, use constant weights = 1/number of samples
+            reg_loss = reg_loss_fn(z_prime, pz_sample.detach())  # By default, use constant weights = 1/number of samples
+            
             loss += float(self.reg_lambda) * reg_loss
         else:
             reg_loss = 0.0
@@ -106,28 +107,30 @@ class SinkhornTrainer:
             'decode': recon_x
         }
 
-    def train_on_batch(self, x, curr_indices):
+    def train_on_batch(self, x, curr_indices, batch_index):
 
         self.optimizer.zero_grad()
 
-        result = self.test_on_batch(x, curr_indices)
+        result = self.test_on_batch(x, curr_indices, batch_index)
         result['loss'].backward()
         self.optimizer.step()
         return result
 
-    def recalculate_latents(self):
-
+    def recalculate_latents(self, batch_exclude = None):
         if self.reg_lambda == 0.0:
             return
 
+        #RECALCULATES ALL LATENTS EXCEPT FOR BATCH batch_exclude
         x_latents_a = list()
         it = 0
         for batch_idx, (x, y, idx) in enumerate(self.train_loader):
-          it += 1
-          with torch.no_grad():
-            x = x.to(self.device)
-            x_latents_a.append(self.model._encode(x))
-            del x
-            # self.x_latents[idx,:] = self.model._encode(x)
-            #print(it, len(self.train_loader))
+            it += 1
+            with torch.no_grad():
+                if batch_idx != batch_exclude:
+                    x = x.to(self.device)
+                    x_latents_a.append(self.model._encode(x))
+                    #idx = idx.to(self.device)
+                    #self.x_latents.index_copy_(0, idx, self.model._encode(x))
+                    del x
         self.x_latents = torch.cat(x_latents_a)
+            #print(it, len(self.train_loader))

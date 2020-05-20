@@ -90,7 +90,7 @@ class ExperimentRunner():
         for self.epoch in range(self.epochs):
             for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                 self.global_iters += 1
-                batch = self.trainer.train_on_batch(x, idx)
+                batch = self.trainer.train_on_batch(x, idx, batch_idx)
                 if self.global_iters % self.log_interval == 0:
                     print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                     neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
