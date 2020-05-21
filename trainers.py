@@ -14,7 +14,7 @@ import gin.torch
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None, type='global', monitoring = True):
+    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None, type='global', monitoring = True, sinkhorn_scaling = 0.5):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -24,11 +24,11 @@ class SinkhornTrainer:
         self.optimizer = optimizer(self.model.parameters())
         self.train_loader = train_loader
         self.monitoring = monitoring
-
+        self.sinkhorn_scaling = sinkhorn_scaling
         assert type in {'local', 'global'}, "type has to be `local` or `global`"
         self.type = type
 
-        # If nat_size unspecified, initialize.
+        #If nat_size unspecified, initialize.
         if nat_size is None:
             if type == 'global':
                 nat_size = len(train_loader.dataset)
@@ -36,6 +36,7 @@ class SinkhornTrainer:
                 nat_size = batch_size
 
         self.nat_size = nat_size
+        self.pz_sample = self.sample_pz(self.nat_size).to(self.device)
 
         # If monitoring, save all x_latents. Otherwise only nat_size many x_latents are required.
         if monitoring:
@@ -69,31 +70,30 @@ class SinkhornTrainer:
             'decode': gen_x
         }
 
-    def test_on_batch(self, x, curr_indices, batch_index = None):        
+    def test_on_batch(self, x, curr_indices, batch_index = None, resample = True, recalc_latents = True):        
         x = x.to(self.device)
         recon_x, z = self.model(x)
 
-        if self.type == 'global' or self.monitoring:
+        if (self.type == 'global' or self.monitoring) and recalc_latents:
             self.recalculate_latents(batch_index)
             self.x_latents = torch.cat((self.x_latents, z), dim=0)
         
         bce = F.mse_loss(recon_x, x)
 
-        reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling=0.3, verbose=True)
+        reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
         #reg_loss_fn = SamplesLoss(loss="gaussian", p=2, blur=.05, backend='online', scaling=0.01, verbose=True)
-                
-        loss = bce
+        loss = bce.clone()
 
         if self.reg_lambda != 0.0:
-            pz_sample = self.sample_pz(self.nat_size).to(self.device)
+            if resample:
+                self.pz_sample = self.sample_pz(self.nat_size).to(self.device)
 
             if self.type == 'local':
                 z_prime = z
             elif self.type == 'global':
                 z_prime = self.x_latents
-
-            reg_loss = reg_loss_fn(z_prime, pz_sample.detach())  # By default, use constant weights = 1/number of samples
             
+            reg_loss = reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples
             loss += float(self.reg_lambda) * reg_loss
         else:
             reg_loss = 0.0
@@ -107,11 +107,11 @@ class SinkhornTrainer:
             'decode': recon_x
         }
 
-    def train_on_batch(self, x, curr_indices, batch_index):
+    def train_on_batch(self, x, curr_indices, batch_index, resample, recalc_latents):
 
         self.optimizer.zero_grad()
 
-        result = self.test_on_batch(x, curr_indices, batch_index)
+        result = self.test_on_batch(x, curr_indices, batch_index, resample, recalc_latents)
         result['loss'].backward()
         self.optimizer.step()
         return result

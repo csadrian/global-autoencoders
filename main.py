@@ -25,7 +25,7 @@ from datasets import DatasetWithIndices
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -39,6 +39,8 @@ class ExperimentRunner():
         self.distribution = distribution
         self.dataset = dataset
         self.ae_model_class = ae_model_class
+        self.resampling_freq = resampling_freq
+        self.recalculate_freq = recalculate_freq
 
         self.setup_environment()
         self.setup_torch()
@@ -89,8 +91,11 @@ class ExperimentRunner():
         self.global_iters = 0
         for self.epoch in range(self.epochs):
             for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
+                print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
                 self.global_iters += 1
-                batch = self.trainer.train_on_batch(x, idx, batch_idx)
+                resample = not self.global_iters % self.resampling_freq
+                recalc_latents = not self.global_iters % self.recalculate_freq
+                batch = self.trainer.train_on_batch(x, idx, batch_idx, resample, recalc_latents)
                 if self.global_iters % self.log_interval == 0:
                     print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                     neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])

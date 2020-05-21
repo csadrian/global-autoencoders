@@ -1,6 +1,9 @@
-ExperimentRunner.distribution = 'sphere'
+ExperimentRunner.distribution = 'uniform'
 ExperimentRunner.ae_model_class = @models.MnistModel
-SinkhornTrainer.reg_lambda = 1.0
+ExperimentRunner.resampling_freq = 1
+ExperimentRunner.recalculate_freq = 1
+SinkhornTrainer.reg_lambda = 10000
 SinkhornTrainer.type = 'global'
 SinkhornTrainer.monitoring = True
+SinkhornTrainer.sinkhorn_scaling = 0.9
 models.MnistModel.z_dim=2
