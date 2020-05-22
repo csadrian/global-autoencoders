@@ -14,6 +14,7 @@ from absl import flags, app
 
 import trainers
 import models
+import visual
 
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
@@ -22,10 +23,14 @@ import utils
 
 from datasets import DatasetWithIndices
 
+from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
+from scipy.stats import norm
+import math
+
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -89,23 +94,47 @@ class ExperimentRunner():
         self.setup_trainers()
 
         self.global_iters = 0
-        for self.epoch in range(self.epochs):
-            for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
-                print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
-                self.global_iters += 1
-                resample = not self.global_iters % self.resampling_freq
-                recalc_latents = not self.global_iters % self.recalculate_freq
-                batch = self.trainer.train_on_batch(x, idx, batch_idx, resample, recalc_latents)
-                if self.global_iters % self.log_interval == 0:
-                    print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
-                    neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
-                    neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
-                    neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
-                    neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
 
-                if self.global_iters % self.plot_interval == 0:
-                    self.test()
+        VIDEO_SIZE = 512
+        with FFMPEG_VideoWriter('out.mp4', (VIDEO_SIZE, VIDEO_SIZE), 3.0) as video:
+            #nat_size = self.trainer.nat_size
+            #nat = self.trainer.sample_pz(nat_size)
+            for self.epoch in range(self.epochs):
+                for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
+                    print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
+                    self.global_iters += 1
+                    resample = not self.global_iters % self.resampling_freq
+                    recalc_latents = not self.global_iters % self.recalculate_freq
+                    batch = self.trainer.train_on_batch(x, idx, batch_idx, resample, recalc_latents)
 
+                    latents = batch['full_encode']
+                    latents = latents.cpu()
+                    latents = latents.detach().numpy()
+                    nat = self.trainer.pz_sample
+                    nat = nat.cpu()
+                    nat = nat.detach().numpy()
+                    if self.distribution == 'normal':
+                        latents = norm.cdf(latents) * 2 - 1
+                        nat = norm.cdf(nat) * 2 - 1
+                    if self.distribution == 'sphere':    
+                        latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
+                        nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1    
+                    #frame = visual.draw_points(nat, VIDEO_SIZE)
+                    frame = visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False)
+                    video.write_frame(frame)
+
+                    if self.global_iters % self.log_interval == 0:                        
+                        print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
+                        neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
+                        neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
+                        neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
+                        neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
+
+                        if self.global_iters % self.plot_interval == 0:
+                            self.test()
+
+        video.close()
+        
     def plot_latent_2d(self, test_encode, test_targets, test_loss):
         # save encoded samples plot
         plt.figure(figsize=(10, 10))

@@ -1,4 +1,4 @@
-ExperimentRunner.distribution = 'uniform'
+ExperimentRunner.distribution = 'normal'
 ExperimentRunner.ae_model_class = @models.MnistModel
 ExperimentRunner.resampling_freq = 1
 ExperimentRunner.recalculate_freq = 1

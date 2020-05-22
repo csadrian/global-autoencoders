@@ -104,7 +104,8 @@ class SinkhornTrainer:
             'rec_loss': bce,
             'reg_lambda': self.reg_lambda,
             'encode': z,
-            'decode': recon_x
+            'decode': recon_x,
+            'full_encode': z_prime
         }
 
     def train_on_batch(self, x, curr_indices, batch_index, resample, recalc_latents):
