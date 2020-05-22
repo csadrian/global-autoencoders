@@ -30,7 +30,7 @@ import math
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -44,8 +44,6 @@ class ExperimentRunner():
         self.distribution = distribution
         self.dataset = dataset
         self.ae_model_class = ae_model_class
-        self.resampling_freq = resampling_freq
-        self.recalculate_freq = recalculate_freq
 
         self.setup_environment()
         self.setup_torch()
@@ -73,7 +71,7 @@ class ExperimentRunner():
         self.model = self.ae_model_class(nc=nc)
         self.model.to(self.device)
 
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, distribution=self.distribution)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
 
     def setup_data_loaders(self):
 
@@ -103,9 +101,7 @@ class ExperimentRunner():
                 for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                     print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
                     self.global_iters += 1
-                    resample = not self.global_iters % self.resampling_freq
-                    recalc_latents = not self.global_iters % self.recalculate_freq
-                    batch = self.trainer.train_on_batch(x, idx, batch_idx, resample, recalc_latents)
+                    batch = self.trainer.train_on_batch(x, idx, self.global_iters)
 
                     latents = batch['full_encode']
                     latents = latents.cpu()
@@ -158,13 +154,14 @@ class ExperimentRunner():
         
         with torch.no_grad():
             for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
-                test_evals = self.trainer.test_on_batch(x_test, idx)
+                test_evals = self.trainer.rec_loss_on_test(x_test)
                 test_encode.append(test_evals['encode'].detach())
-                test_loss += test_evals['loss'].item()
-                test_reg_loss += test_evals['reg_loss'].item()
                 test_rec_loss += test_evals['rec_loss'].item()
 
                 test_targets.append(y_test)
+            
+            test_reg_loss = self.trainer.reg_loss_on_test().item()
+            test_loss = test_rec_loss + test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
         test_loss /= len(self.test_loader)
         test_rec_loss /= len(self.test_loader)
@@ -179,12 +176,12 @@ class ExperimentRunner():
         self.plot_latent_2d(test_encode, test_targets, test_loss)
     
         test_batch, (x, y, idx) = enumerate(self.test_loader, start=0).__next__()
-        test_batch = self.trainer.test_on_batch(x, idx)
+        test_reconstruct = self.trainer.reconstruct(x)
 
         train_batch, (x, y, idx) = enumerate(self.train_loader, start=0).__next__()
-        train_batch = self.trainer.test_on_batch(x, idx)
+        train_reconstruct = self.trainer.reconstruct(x)
         gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
-        self.plot_images(x, train_batch['decode'], test_batch['decode'], gen_batch['decode'])
+        self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])
 
 
 def main(argv):
