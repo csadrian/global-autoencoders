@@ -20,10 +20,11 @@ class View(nn.Module):
 @gin.configurable
 class WAE(nn.Module):
     """Encoder-Decoder architecture for both WAE-MMD and WAE-GAN."""
-    def __init__(self, z_dim=64, nc=3, input_normalize_sym=False):
+    def __init__(self, z_dim=64, nc=3, distribution = 'sphere', input_normalize_sym=False):
         super(WAE, self).__init__()
         self.z_dim = z_dim
         self.nc = nc
+        self.distribution = distribution
         self.input_normalize_sym = input_normalize_sym
         self.encoder = nn.Sequential(
             nn.Conv2d(nc, 128, 4, 2, 1, bias=False),              # B,  128, 32, 32
@@ -69,8 +70,7 @@ class WAE(nn.Module):
         return x_recon, z
 
     def _encode(self, x):
-        distribution = gin.REQUIRED
-        if distribution == "sphere":
+        if self.distribution == "sphere":
             return F.normalize(self.encoder(x), dim=1, p=2)
         else:
             return self.encoder(x)
@@ -87,10 +87,11 @@ class WAE(nn.Module):
 @gin.configurable
 class MnistModel(nn.Module):
     """Encoder-Decoder architecture for MINST-like datasets."""
-    def __init__(self, z_dim=10, nc=1, input_normalize_sym=False):
+    def __init__(self, z_dim=10, nc=1, distribution = 'sphere', input_normalize_sym=False):
         super(MnistModel, self).__init__()
         self.z_dim = z_dim
         self.nc = nc
+        self.distribution = distribution
         self.input_normalize_sym = input_normalize_sym
         self.encoder = nn.Sequential(
             nn.Conv2d(nc, 32, 4, 2, 1, bias=False),              # B,  128, 14, 14
@@ -127,8 +128,8 @@ class MnistModel(nn.Module):
         return x_recon, z
 
     def _encode(self, x):
-        distribution = gin.REQUIRED
-        if distribution == "sphere":
+        #distribution = gin.REQUIRED
+        if self.distribution == "sphere":
             return F.normalize(self.encoder(x), dim=1, p=2)
         else:
             return self.encoder(x)

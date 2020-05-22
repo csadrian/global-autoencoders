@@ -1,9 +1,9 @@
-ExperimentRunner.distribution = 'uniform'
+ExperimentRunner.distribution = 'normal'
 ExperimentRunner.ae_model_class = @models.MnistModel
-ExperimentRunner.resampling_freq = 1
-ExperimentRunner.recalculate_freq = 1
-SinkhornTrainer.reg_lambda = 10000
+SinkhornTrainer.resampling_freq = 1
+SinkhornTrainer.recalculate_freq = 1
+SinkhornTrainer.reg_lambda = 10
 SinkhornTrainer.type = 'global'
 SinkhornTrainer.monitoring = True
-SinkhornTrainer.sinkhorn_scaling = 0.9
-models.MnistModel.z_dim=2
+SinkhornTrainer.sinkhorn_scaling = 0.7
+models.MnistModel.z_dim=10

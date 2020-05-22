@@ -14,6 +14,7 @@ from absl import flags, app
 
 import trainers
 import models
+import visual
 
 from torchvision import datasets, transforms
 import torchvision.utils as vutils
@@ -21,6 +22,10 @@ import torchvision.utils as vutils
 import utils
 
 from datasets import DatasetWithIndices
+
+from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
+from scipy.stats import norm
+import math
 
 @gin.configurable
 class ExperimentRunner():
@@ -39,8 +44,6 @@ class ExperimentRunner():
         self.distribution = distribution
         self.dataset = dataset
         self.ae_model_class = ae_model_class
-        self.resampling_freq = resampling_freq
-        self.recalculate_freq = recalculate_freq
 
         self.setup_environment()
         self.setup_torch()
@@ -68,7 +71,7 @@ class ExperimentRunner():
         self.model = self.ae_model_class(nc=nc)
         self.model.to(self.device)
 
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, distribution=self.distribution)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
 
     def setup_data_loaders(self):
 
@@ -89,23 +92,45 @@ class ExperimentRunner():
         self.setup_trainers()
 
         self.global_iters = 0
-        for self.epoch in range(self.epochs):
-            for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
-                print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
-                self.global_iters += 1
-                resample = not self.global_iters % self.resampling_freq
-                recalc_latents = not self.global_iters % self.recalculate_freq
-                batch = self.trainer.train_on_batch(x, idx, batch_idx, resample, recalc_latents)
-                if self.global_iters % self.log_interval == 0:
-                    print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
-                    neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
-                    neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
-                    neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
-                    neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
 
-                if self.global_iters % self.plot_interval == 0:
-                    self.test()
+        VIDEO_SIZE = 512
+        with FFMPEG_VideoWriter('out.mp4', (VIDEO_SIZE, VIDEO_SIZE), 3.0) as video:
+            #nat_size = self.trainer.nat_size
+            #nat = self.trainer.sample_pz(nat_size)
+            for self.epoch in range(self.epochs):
+                for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
+                    print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
+                    self.global_iters += 1
+                    batch = self.trainer.train_on_batch(x, idx, self.global_iters)
 
+                    latents = batch['full_encode']
+                    latents = latents.cpu()
+                    latents = latents.detach().numpy()
+                    nat = self.trainer.pz_sample
+                    nat = nat.cpu()
+                    nat = nat.detach().numpy()
+                    if self.distribution == 'normal':
+                        latents = norm.cdf(latents) * 2 - 1
+                        nat = norm.cdf(nat) * 2 - 1
+                    if self.distribution == 'sphere':    
+                        latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
+                        nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1    
+                    #frame = visual.draw_points(nat, VIDEO_SIZE)
+                    frame = visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False)
+                    video.write_frame(frame)
+
+                    if self.global_iters % self.log_interval == 0:                        
+                        print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
+                        neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
+                        neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
+                        neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
+                        neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
+
+                        if self.global_iters % self.plot_interval == 0:
+                            self.test()
+
+        video.close()
+        
     def plot_latent_2d(self, test_encode, test_targets, test_loss):
         # save encoded samples plot
         plt.figure(figsize=(10, 10))
@@ -129,13 +154,14 @@ class ExperimentRunner():
         
         with torch.no_grad():
             for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
-                test_evals = self.trainer.test_on_batch(x_test, idx)
+                test_evals = self.trainer.rec_loss_on_test(x_test)
                 test_encode.append(test_evals['encode'].detach())
-                test_loss += test_evals['loss'].item()
-                test_reg_loss += test_evals['reg_loss'].item()
                 test_rec_loss += test_evals['rec_loss'].item()
 
                 test_targets.append(y_test)
+            
+            test_reg_loss = self.trainer.reg_loss_on_test().item()
+            test_loss = test_rec_loss + test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
         test_loss /= len(self.test_loader)
         test_rec_loss /= len(self.test_loader)
@@ -150,12 +176,12 @@ class ExperimentRunner():
         self.plot_latent_2d(test_encode, test_targets, test_loss)
     
         test_batch, (x, y, idx) = enumerate(self.test_loader, start=0).__next__()
-        test_batch = self.trainer.test_on_batch(x, idx)
+        test_reconstruct = self.trainer.reconstruct(x)
 
         train_batch, (x, y, idx) = enumerate(self.train_loader, start=0).__next__()
-        train_batch = self.trainer.test_on_batch(x, idx)
+        train_reconstruct = self.trainer.reconstruct(x)
         gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
-        self.plot_images(x, train_batch['decode'], test_batch['decode'], gen_batch['decode'])
+        self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])
 
 
 def main(argv):
