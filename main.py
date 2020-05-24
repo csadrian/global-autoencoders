@@ -118,9 +118,11 @@ class ExperimentRunner():
                     #frame = visual.draw_points(nat, VIDEO_SIZE)
                     frame = visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False)
                     video.write_frame(frame)
+                    covered = visual.covered_area(latents[:, :2], resolution = 400, radius = 5)
 
-                    if self.global_iters % self.log_interval == 0:                        
+                    if self.global_iters % self.log_interval == 0:
                         print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
+                        neptune.send_metric('covered_area', x=self.global_iters, y=covered)
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
                         neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
                         neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])

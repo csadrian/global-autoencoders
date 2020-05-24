@@ -1,4 +1,4 @@
-ExperimentRunner.distribution = 'normal'
+ExperimentRunner.distribution = 'sphere'
 ExperimentRunner.ae_model_class = @models.MnistModel
 SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1

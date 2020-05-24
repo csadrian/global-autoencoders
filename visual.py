@@ -26,3 +26,12 @@ def draw_edges(p1, p2, w, radius, edges=True):
     for (x1, y1) in p1:
         cv2.circle(img, (x1, y1), 3, (255, 0, 0), -1, cv2.LINE_AA)
     return img
+
+def covered_area(zs, resolution=400, radius=10):
+    r = radius
+    m = np.zeros((resolution, resolution))
+    for z in zs:
+        zr = (resolution * (z + 1) / 2).astype(int)
+        x, y = zr
+        m[max((x-r, 0)):min((x+r, resolution)), max((y-r, 0)):min((y+r, resolution))] += 1
+    return np.mean((m > 0).astype(np.float32))
