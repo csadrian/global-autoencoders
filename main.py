@@ -51,9 +51,11 @@ class ExperimentRunner():
     def setup_environment(self):
         self.imagesdir = os.path.join(self.outdir, self.prefix, 'images')
         self.chkptdir = os.path.join(self.outdir, self.prefix, 'models')
+        self.viddir = os.path.join(self.outdir, self.prefix, 'videos')
         os.makedirs(self.datadir, exist_ok=True)
         os.makedirs(self.imagesdir, exist_ok=True)
         os.makedirs(self.chkptdir, exist_ok=True)
+        os.makedirs(self.viddir, exist_ok=True)
 
     def setup_torch(self):
         use_cuda = not self.no_cuda and torch.cuda.is_available()
@@ -71,7 +73,7 @@ class ExperimentRunner():
         self.model = self.ae_model_class(nc=nc)
         self.model.to(self.device)
 
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
 
     def setup_data_loaders(self):
 
@@ -94,12 +96,12 @@ class ExperimentRunner():
         self.global_iters = 0
 
         VIDEO_SIZE = 512
-        with FFMPEG_VideoWriter('out.mp4', (VIDEO_SIZE, VIDEO_SIZE), 3.0) as video:
+        with FFMPEG_VideoWriter('{}/{}.mp4'.format(self.viddir, self.prefix), (VIDEO_SIZE, VIDEO_SIZE), 3.0) as video:
             #nat_size = self.trainer.nat_size
             #nat = self.trainer.sample_pz(nat_size)
             for self.epoch in range(self.epochs):
                 for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
-                    print(self.global_iters, self.epoch, batch_idx, len(self.train_loader))
+                    print(self.epoch, batch_idx, self.global_iters, len(x), len(self.train_loader))
                     self.global_iters += 1
                     batch = self.trainer.train_on_batch(x, idx, self.global_iters)
 
@@ -120,7 +122,7 @@ class ExperimentRunner():
                     video.write_frame(frame)
                     covered = visual.covered_area(latents[:, :2], resolution = 400, radius = 5)
 
-                    if self.global_iters % self.log_interval == 0:
+                    if self.global_iters % self.log_interval == 0:                        
                         print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                         neptune.send_metric('covered_area', x=self.global_iters, y=covered)
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
@@ -194,6 +196,14 @@ def main(argv):
     if use_neptune:
         neptune.init(project_qualified_name="csadrian/global-autoencoders")
         exp = neptune.create_experiment(params={}, name="exp")
+        #ONLY WORKS FOR ONE GIN-CONFIG FILE
+        with open(FLAGS.gin_file[0]) as ginf:
+            param = ginf.readline()
+            while param:
+                neptune.append_tag('ExperimentRunner-distribution-sphere')
+                param = param.replace('.','-').replace('=','-').replace(' ','').replace('\'','').replace('\n','').replace('@','')
+                neptune.append_tag(param)
+                param = ginf.readline()
         #for tag in opts['tags'].split(','):
         #  neptune.append_tag(tag)
     else:
@@ -209,5 +219,4 @@ if __name__ == '__main__':
     flags.DEFINE_multi_string('gin_file', None, 'List of paths to the config files.')
     flags.DEFINE_multi_string('gin_param', None, 'Newline separated list of Gin parameter bindings.')
     FLAGS = flags.FLAGS
-
     app.run(main)

@@ -14,7 +14,7 @@ import gin.torch
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, batch_size=64, train_loader=None, test_loader=None, type='global', monitoring = True, sinkhorn_scaling = 0.3, resampling_freq = 1, recalculate_freq = 1):
+    def __init__(self, model, device, batch_size, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, train_loader=None, test_loader=None, type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss = 'Sinkhorn'):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -30,14 +30,19 @@ class SinkhornTrainer:
         self.type = type
         self.resampling_freq = resampling_freq
         self.recalculate_freq = recalculate_freq
+        self.reg_loss = reg_loss
 
-        self.reg_loss_fn = SamplesLoss(loss="sinkhorn", p=2, blur=.05, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+        if reg_loss in {'sinkhorn', 'gaussian', 'energy', 'laplacian'}:
+            self.reg_loss_fn = SamplesLoss(loss=reg_loss, p=2, blur=.05, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+        else:
+            assert False, 'reg_loss not implemented'
+            
         #If nat_size unspecified, initialize.
         if nat_size is None:
             if type == 'global':
                 nat_size = len(train_loader.dataset)
             elif type == 'local':
-                nat_size = batch_size
+                nat_size = self.batch_size
 
         self.nat_size = nat_size
         self.pz_sample = self.sample_pz(self.nat_size).to(self.device)
@@ -133,9 +138,10 @@ class SinkhornTrainer:
                 z_prime = z
             elif self.type == 'global':
                 z_prime = self.x_latents
-            reg_loss = self.reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples
+            reg_loss = self.reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples 
             loss = bce + float(self.reg_lambda) * reg_loss
         else:
+            z_prime = z
             loss = bce.clone()
             reg_loss = 0.0
 
