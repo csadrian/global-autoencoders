@@ -30,7 +30,7 @@ import math
 @gin.configurable
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=10, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', distribution='normal', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -41,7 +41,7 @@ class ExperimentRunner():
         self.datadir = datadir
         self.batch_size = batch_size
         self.prefix = prefix
-        self.distribution = distribution
+        #self.distribution = distribution
         self.dataset = dataset
         self.ae_model_class = ae_model_class
 
@@ -72,6 +72,7 @@ class ExperimentRunner():
         nc = 1 if self.dataset in ('mnist') else 3
         self.model = self.ae_model_class(nc=nc)
         self.model.to(self.device)
+        self.distribution = self.model.distribution
 
         self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
 
@@ -117,8 +118,8 @@ class ExperimentRunner():
                     if self.distribution == 'sphere':    
                         latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
                         nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1    
-                    #frame = visual.draw_points(nat, VIDEO_SIZE)
-                    frame = visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False)
+                    frame = visual.draw_points(latents, VIDEO_SIZE)
+                    #frame = visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False)
                     video.write_frame(frame)
                     covered = visual.covered_area(latents[:, :2], resolution = 400, radius = 5)
 

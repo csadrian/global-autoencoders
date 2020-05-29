@@ -14,7 +14,7 @@ import gin.torch
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, batch_size, optimizer=torch.optim.Adam, distribution=gin.REQUIRED, reg_lambda=1.0, nat_size=None, train_loader=None, test_loader=None, type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss = 'Sinkhorn'):
+    def __init__(self, model, device, batch_size, optimizer=torch.optim.Adam, distribution='sphere', reg_lambda=1.0, nat_size=None, train_loader=None, test_loader=None, type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss = 'Sinkhorn'):
         self.model = model
         self.device = device
         self.distribution = distribution
