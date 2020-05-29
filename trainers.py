@@ -54,7 +54,7 @@ class SinkhornTrainer:
             self.x_latents = torch.zeros(torch.Size([self.nat_size, self.model.z_dim])).to(self.device).detach()
 
     def sample_pz(self, n=100):
-        if self.distribution == 'normal' or 'sphere':
+        if self.distribution in {'normal', 'sphere'}:
             base_dist = torch.distributions.normal.Normal(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
             dist = torch.distributions.independent.Independent(base_dist, 1)
         elif self.distribution == 'uniform':
