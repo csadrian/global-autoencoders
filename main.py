@@ -76,6 +76,22 @@ class ExperimentRunner():
 
         self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
 
+    def generate_frame(self, z, labels, frame_size):
+        latents = z
+        latents = latents.cpu()
+        latents = latents.detach().numpy()
+        #nat = self.trainer.pz_sample
+        #nat = nat.cpu()
+        #nat = nat.detach().numpy()
+        if self.distribution == 'normal':
+            latents = norm.cdf(latents) * 2 - 1
+            #nat = norm.cdf(nat) * 2 - 1
+        if self.distribution == 'sphere':    
+            latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
+            #nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1    
+        return visual.draw_points(latents, labels, frame_size), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
+        #return visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
+ 
     def setup_data_loaders(self):
 
         if self.dataset == 'celeba':
@@ -87,7 +103,8 @@ class ExperimentRunner():
         else:
             raise Exception("Dataset not found: " + dataset)
 
-        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(train_dataset), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
+        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(train_dataset), batch_size=self.batch_size, shuffle=True, **self.dataloader_kwargs)
+        
         self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(test_dataset), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
 
     def train(self): 
@@ -98,38 +115,24 @@ class ExperimentRunner():
 
         VIDEO_SIZE = 512
         with FFMPEG_VideoWriter('{}/{}.mp4'.format(self.viddir, self.prefix), (VIDEO_SIZE, VIDEO_SIZE), 3.0) as video:
-            #nat_size = self.trainer.nat_size
-            #nat = self.trainer.sample_pz(nat_size)
             for self.epoch in range(self.epochs):
                 for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                     print(self.epoch, batch_idx, self.global_iters, len(x), len(self.train_loader))
                     self.global_iters += 1
                     batch = self.trainer.train_on_batch(x, idx, self.global_iters)
 
-                    latents = batch['full_encode']
-                    latents = latents.cpu()
-                    latents = latents.detach().numpy()
-                    nat = self.trainer.pz_sample
-                    nat = nat.cpu()
-                    nat = nat.detach().numpy()
-                    if self.distribution == 'normal':
-                        latents = norm.cdf(latents) * 2 - 1
-                        nat = norm.cdf(nat) * 2 - 1
-                    if self.distribution == 'sphere':    
-                        latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
-                        nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1    
-                    frame = visual.draw_points(latents, VIDEO_SIZE)
-                    #frame = visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False)
+                    frame, covered = self.generate_frame(batch['video']['latents'], batch['video']['labels'], VIDEO_SIZE)
                     video.write_frame(frame)
-                    covered = visual.covered_area(latents[:, :2], resolution = 400, radius = 5)
 
                     if self.global_iters % self.log_interval == 0:                        
                         print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
-                        neptune.send_metric('covered_area', x=self.global_iters, y=covered)
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
                         neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
                         neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
+                        neptune.send_metric('covered_area', x=self.global_iters, y=covered)
                         neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
+                        neptune.send_metric('blur-sigma', x=self.global_iters, y=batch['blur'])               
+                        
 
                         if self.global_iters % self.plot_interval == 0:
                             self.test()
@@ -168,9 +171,9 @@ class ExperimentRunner():
             test_reg_loss = self.trainer.reg_loss_on_test().item()
             test_loss = test_rec_loss + test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
-        test_loss /= len(self.test_loader)
-        test_rec_loss /= len(self.test_loader)
-        test_reg_loss /= len(self.test_loader)
+        test_loss /= len(self.test_loader.dataset)
+        test_rec_loss /= len(self.test_loader.dataset)
+        test_reg_loss /= len(self.test_loader.dataset)
 
         print('Test Epoch: {} ({:.2f}%)\tLoss: {:.6f}'.format(self.epoch + 1, float(self.epoch + 1) / (self.epochs) * 100., test_loss))
 
@@ -201,7 +204,6 @@ def main(argv):
         with open(FLAGS.gin_file[0]) as ginf:
             param = ginf.readline()
             while param:
-                neptune.append_tag('ExperimentRunner-distribution-sphere')
                 param = param.replace('.','-').replace('=','-').replace(' ','').replace('\'','').replace('\n','').replace('@','')
                 neptune.append_tag(param)
                 param = ginf.readline()

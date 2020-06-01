@@ -14,7 +14,7 @@ import gin.torch
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, batch_size, optimizer=torch.optim.Adam, distribution='sphere', reg_lambda=1.0, nat_size=None, train_loader=None, test_loader=None, type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss = 'Sinkhorn'):
+    def __init__(self, model, device, batch_size, optimizer=torch.optim.Adam, distribution='sphere', reg_lambda=1.0, nat_size=None, train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss_type = 'sinkhorn', blur = 0.05):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -26,22 +26,34 @@ class SinkhornTrainer:
         self.test_loader = test_loader
         self.monitoring = monitoring
         self.sinkhorn_scaling = sinkhorn_scaling
-        assert type in {'local', 'global'}, "type has to be `local` or `global`"
-        self.type = type
+        assert trainer_type in {'local', 'global'}, "trainer_type has to be `local` or `global`"
+        self.trainer_type = trainer_type
         self.resampling_freq = resampling_freq
         self.recalculate_freq = recalculate_freq
-        self.reg_loss = reg_loss
+        self.reg_loss_type = reg_loss_type
+        self.blur = blur
+        
+        #In the local, no monitoring case, generate video and covered area from fixed batch.
+        _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
+        self.trail_batch = self.trail_batch.to(self.device)
+        self.trail_labels = self.trail_labels.cpu().detach().numpy()
 
-        if reg_loss in {'sinkhorn', 'gaussian', 'energy', 'laplacian'}:
-            self.reg_loss_fn = SamplesLoss(loss=reg_loss, p=2, blur=.05, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+        self.all_labels = torch.zeros(torch.Size([len(train_loader.dataset)]), dtype=torch.long)
+        for _, (_, y, idx) in enumerate(self.train_loader):
+            with torch.no_grad():
+                self.all_labels[idx] = y
+        self.all_labels = self.all_labels.cpu().detach().numpy()
+ 
+        if reg_loss_type in {'sinkhorn', 'gaussian', 'energy', 'laplacian', 'IMQ'}:
+            self.reg_loss_fn = SamplesLoss(loss=reg_loss_type, p=2, blur=blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
         else:
             assert False, 'reg_loss not implemented'
             
         #If nat_size unspecified, initialize.
         if nat_size is None:
-            if type == 'global':
+            if trainer_type == 'global':
                 nat_size = len(train_loader.dataset)
-            elif type == 'local':
+            elif trainer_type == 'local':
                 nat_size = self.batch_size
 
         self.nat_size = nat_size
@@ -73,11 +85,12 @@ class SinkhornTrainer:
 
 
     def decode_batch(self, z):
-        z = z.to(self.device)
-        gen_x = self.model._decode(z)
-        return {
-            'decode': gen_x
-        }
+        with torch.no_grad():
+            z = z.to(self.device)
+            gen_x = self.model._decode(z)
+            return {
+                'decode': gen_x
+            }
 
     def reg_loss_on_test(self):
         with torch.no_grad():
@@ -111,9 +124,25 @@ class SinkhornTrainer:
                 'rec_loss': rec_loss
                 }
         
-        
-    def loss_on_batch(self, x, curr_indices, iter):
 
+    def sigma_median_heuristic(self, X, Y):
+        with torch.no_grad():
+            p2_norm_x = X.pow(2).sum(1).unsqueeze(0)
+            prods_x = torch.mm(X, X.t())
+            dists_x = p2_norm_x + p2_norm_x.t() - 2 * prods_x
+
+            p2_norm_y = Y.pow(2).sum(1).unsqueeze(0)
+            prods_y = torch.mm(Y, Y.t())
+            dists_y = p2_norm_y + p2_norm_y.t() - 2 * prods_y
+
+            dot_prd = torch.mm(X, Y.t())
+            dists_c = p2_norm_x + p2_norm_y.t() - 2 * dot_prd
+
+            sigma2_k = torch.median(torch.reshape(dists_c, (-1,)))
+            sigma2_k += torch.median(torch.reshape(dists_y, (-1,)))
+            return sigma2_k
+            
+    def loss_on_batch(self, x, curr_indices, iter):
         recalc_latents = not iter % self.recalculate_freq
         resample = not iter % self.resampling_freq
         
@@ -121,24 +150,34 @@ class SinkhornTrainer:
         recon_x, z = self.model(x)
         
         #recompute latent points
-        if self.type == 'global' or self.monitoring:
+        if self.trainer_type == 'global' or self.monitoring:
             #detach from any previous computations
             self.x_latents = self.x_latents.detach()
             if recalc_latents:
                 self.recalculate_latents()
             self.x_latents.index_copy_(0, curr_indices.to(self.device), z)
-        
+            video_batch = self.x_latents
+            video_labels = self.all_labels
+        else:
+            with torch.no_grad():
+                video_batch = self.model._encode(self.trail_batch)
+                video_labels = self.trail_labels
+
         bce = F.mse_loss(recon_x, x)
         
         if self.reg_lambda != 0.0:
             if resample:
                 self.pz_sample = self.sample_pz(self.nat_size).to(self.device)
 
-            if self.type == 'local':
+            if self.trainer_type == 'local':
                 z_prime = z
-            elif self.type == 'global':
+            elif self.trainer_type == 'global':
                 z_prime = self.x_latents
-            reg_loss = self.reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples 
+            #if self.reg_loss_type == 'gaussian':
+#                self.blur = self.sigma_median_heuristic(z_prime, self.pz_sample)
+                #print(sigma)
+                #self.reg_loss_fn = SamplesLoss(loss='gaussian', p=2, blur=self.blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+            reg_loss = self.reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples
             loss = bce + float(self.reg_lambda) * reg_loss
         else:
             z_prime = z
@@ -152,7 +191,8 @@ class SinkhornTrainer:
             'reg_lambda': self.reg_lambda,
             'encode': z,
             'decode': recon_x,
-            'full_encode': z_prime
+            'video': {'latents': video_batch, 'labels': video_labels},
+            'blur' : self.blur
         }
 
     def train_on_batch(self, x, curr_indices, iter):
