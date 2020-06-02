@@ -2,7 +2,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-import os
+import os, sys
 
 import torch
 import torch.optim
@@ -70,7 +70,9 @@ class ExperimentRunner():
 
     def setup_trainers(self):
         nc = 1 if self.dataset in ('mnist') else 3
-        self.model = self.ae_model_class(nc=nc)
+        input_dims = (28, 28, 1) if self.dataset in ('mnist') else (64, 64, 3)
+
+        self.model = self.ae_model_class(nc=nc, input_dims=input_dims)
         self.model.to(self.device)
         self.distribution = self.model.distribution
 

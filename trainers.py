@@ -10,11 +10,12 @@ from geomloss import SamplesLoss
 
 import gin
 import gin.torch
+import gin.torch.external_configurables
 
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, batch_size, optimizer=torch.optim.Adam, distribution='sphere', reg_lambda=1.0, nat_size=None, train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss_type = 'sinkhorn', blur = 0.05):
+    def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss_type = 'sinkhorn', blur = 0.05):
         self.model = model
         self.device = device
         self.distribution = distribution
