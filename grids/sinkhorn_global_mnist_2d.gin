@@ -1,0 +1,9 @@
+ExperimentRunner.ae_model_class = @models.MnistModel
+ExperimentRunner.epochs = 50
+
+SinkhornTrainer.reg_lambda = [0.0001, 0.001]
+models.MnistModel.z_dim = [2, 10, 100]
+models.MnistModel.distribution = 'sphere'
+
+descartes_builder.name = 'sinkhorn_global_mnist_2d'
+descartes_builder.params = ['SinkhornTrainer.reg_lambda', 'models.MnistModel.z_dim']

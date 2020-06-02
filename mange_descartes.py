@@ -2,6 +2,7 @@ import matplotlib
 matplotlib.use('Agg')
 import os
 
+import itertools
 
 import neptune
 import gin
@@ -12,26 +13,35 @@ import main
 
 @gin.configurable
 def descartes_builder(name='out', params=[]):
-    print(params)
+    print("Building grid search with parameters: ", params)
 
     directory = os.path.join('grids', name)
     if not os.path.exists(directory):
         os.makedirs(directory)
 
-    i = 0
+    all_values = []
+    all_params = []
     for param in params:
         values = gin.query_parameter(param)
-        for val in values:
-            exp_directory = os.path.join(directory, str(i))
-            if not os.path.exists(exp_directory):
-                os.makedirs(exp_directory)
+        all_params.append(param)
+        all_values.append(values)
+    descartes = itertools.product(*all_values)
 
-            with gin.unlock_config():
-                gin.bind_parameter(param, val)
-            config_str = gin.config_str()
-            with open(os.path.join(exp_directory, 'config.gin'), 'w+') as f:
-                f.write(config_str)
-            i += 1
+    i = 0
+    for one in descartes:
+
+        exp_directory = os.path.join(directory, str(i))
+        if not os.path.exists(exp_directory):
+            os.makedirs(exp_directory)
+
+        with gin.unlock_config():
+            for param_idx in range(len(all_params)):
+                gin.bind_parameter(all_params[param_idx], one[param_idx])
+
+        config_str = gin.config_str()
+        with open(os.path.join(exp_directory, 'config.gin'), 'w+') as f:
+            f.write(config_str)
+        i += 1
     pass
 
 
