@@ -27,7 +27,7 @@ from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 from scipy.stats import norm
 import math
 
-@gin.configurable
+@gin.configurable('ExperimentRunner')
 class ExperimentRunner():
 
     def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
@@ -196,18 +196,21 @@ class ExperimentRunner():
 
 def main(argv):
     gin.parse_config_files_and_bindings(FLAGS.gin_file, FLAGS.gin_param, skip_unknown=True)
-    print(gin.operative_config_str())
-    
+    op_config_str = gin.config._CONFIG
+
     use_neptune = "NEPTUNE_API_TOKEN" in os.environ
     if use_neptune:
+
+        params = utils.get_gin_params_as_dict(gin.config._CONFIG)
         neptune.init(project_qualified_name="csadrian/global-autoencoders")
-        exp = neptune.create_experiment(params={}, name="exp")
+
+        exp = neptune.create_experiment(params=params, name="exp")
         #ONLY WORKS FOR ONE GIN-CONFIG FILE
         with open(FLAGS.gin_file[0]) as ginf:
             param = ginf.readline()
             while param:
                 param = param.replace('.','-').replace('=','-').replace(' ','').replace('\'','').replace('\n','').replace('@','')
-                neptune.append_tag(param)
+                #neptune.append_tag(param)
                 param = ginf.readline()
         #for tag in opts['tags'].split(','):
         #  neptune.append_tag(tag)
@@ -217,6 +220,9 @@ def main(argv):
     er = ExperimentRunner(prefix=exp.id)
     er.train()
 
+    params = utils.get_gin_params_as_dict(gin.config._OPERATIVE_CONFIG)
+    for k, v in params.items():
+        neptune.set_property(k, v)
     neptune.stop()
     print('fin')
 
