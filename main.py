@@ -21,6 +21,8 @@ import torchvision.utils as vutils
 
 import utils
 
+import synthetic
+
 from datasets import DatasetWithIndices
 
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
@@ -41,7 +43,6 @@ class ExperimentRunner():
         self.datadir = datadir
         self.batch_size = batch_size
         self.prefix = prefix
-        #self.distribution = distribution
         self.dataset = dataset
         self.ae_model_class = ae_model_class
 
@@ -70,7 +71,12 @@ class ExperimentRunner():
 
     def setup_trainers(self):
         nc = 1 if self.dataset in ('mnist') else 3
-        input_dims = (28, 28, 1) if self.dataset in ('mnist') else (64, 64, 3)
+        if self.dataset in ('mnist'):
+            input_dims = (28, 28, 1)
+        elif self.dataset in ('flower'):
+            input_dims = (2,)
+        else:
+            input_dims = (64, 64, 3)
 
         self.model = self.ae_model_class(nc=nc, input_dims=input_dims)
         self.model.to(self.device)
@@ -90,8 +96,8 @@ class ExperimentRunner():
             #nat = norm.cdf(nat) * 2 - 1
         if self.distribution == 'sphere':    
             latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
-            #nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1    
-        return visual.draw_points(latents, labels, frame_size), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
+            #nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1
+        return visual.draw_points(latents[:, :2], frame_size, labels, self.nlabels), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
         #return visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
  
     def setup_data_loaders(self):
@@ -99,9 +105,15 @@ class ExperimentRunner():
         if self.dataset == 'celeba':
             train_dataset = datasets.CelebA(self.datadir, split='train', target_type='attr', download=True, transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor()]))
             test_dataset = datasets.CelebA(self.datadir, split='test', target_type='attr', download=True, transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor()]))
+            self.nlabels = 0
         elif self.dataset == 'mnist':
             train_dataset = datasets.MNIST(self.datadir, train=True, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
             test_dataset = datasets.MNIST(self.datadir, train=False, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+            self.nlabels = 10
+        elif self.dataset == 'flower':
+            train_dataset = synthetic.Flower(train = True)
+            test_dataset = synthetic.Flower(train = False)
+            self.nlabels = 0
         else:
             raise Exception("Dataset not found: " + dataset)
 
@@ -131,7 +143,8 @@ class ExperimentRunner():
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
                         neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
                         neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
-                        neptune.send_metric('covered_area', x=self.global_iters, y=covered)
+                        if self.trainer.monitoring == True or self.trainer.trainer_type == 'global':
+                            neptune.send_metric('covered_area', x=self.global_iters, y=covered)
                         neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
                         neptune.send_metric('blur-sigma', x=self.global_iters, y=batch['blur'])               
                         
@@ -159,6 +172,29 @@ class ExperimentRunner():
         utils.save_image(test_rec.detach(), 'test_reconstructions', self.global_iters, '{}/test_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
         utils.save_image(gen.detach(), 'generated', self.global_iters, '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
 
+    def plot_flowers(self):
+        reconstruction = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
+        original = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
+        for _, (x, _, idx) in enumerate(self.train_loader):
+            #reconstruction[idx] = self.trainer.reconstruct(x)
+            with torch.no_grad():
+                x = x.to(self.device)
+                original[idx] = x
+                reconstruction[idx], _ = self.model.forward(x)
+                del x
+                
+        x, y = reconstruction.detach().cpu().numpy()[:,0], reconstruction.detach().cpu().numpy()[:,1]
+        plt.scatter(x, y, s=1)
+        plt.savefig('{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+        plt.close()        
+        neptune.send_image('train_reconstruct', x=self.global_iters, y='{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+
+        x, y = original.detach().cpu().numpy()[:,0], original.detach().cpu().numpy()[:,1]
+        plt.scatter(x, y, s=1)
+        plt.savefig('{}/original_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+        plt.close()
+        neptune.send_image('original', x=self.global_iters, y='{}/original_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+
     def test(self):
         test_encode, test_targets, test_loss, test_reg_loss, test_rec_loss = list(), list(), 0.0, 0.0, 0.0
         
@@ -184,14 +220,18 @@ class ExperimentRunner():
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         
         self.plot_latent_2d(test_encode, test_targets, test_loss)
-    
-        test_batch, (x, y, idx) = enumerate(self.test_loader, start=0).__next__()
-        test_reconstruct = self.trainer.reconstruct(x)
 
-        train_batch, (x, y, idx) = enumerate(self.train_loader, start=0).__next__()
-        train_reconstruct = self.trainer.reconstruct(x)
-        gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
-        self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])
+        with torch.no_grad():
+            _, (x, _, _) = enumerate(self.test_loader, start=0).__next__()
+            test_reconstruct = self.trainer.reconstruct(x)
+
+            _, (x, _, _) = enumerate(self.train_loader, start=0).__next__()
+            train_reconstruct = self.trainer.reconstruct(x)
+            gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
+        if self.dataset == 'flower':
+            self.plot_flowers()
+        else:
+            self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])
 
 
 def main(argv):

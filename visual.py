@@ -1,26 +1,33 @@
 import numpy as np
 import cv2
-
-
-def draw_points(p, labels, w):
+#input p should be 2 dim
+def draw_points(p, w, labels, nlabels):
     img = np.zeros((w, w, 3), np.uint8)
+    
+    #rescale points
     xmin, xmax, ymin, ymax = min(min(p[:,0]), -1.), max(max(p[:,0]), 1.), min(min(p[:,1]), -1.), max(max(p[:,1]), 1.)
     limits = np.array([xmin, ymin])
     s = max(xmax - xmin, ymax - ymin)
-    cmap = {}
-    for i in range(10):
-        np.random.seed(i)
-        color  = np.random.randint(255, size=3)
-        cmap[i] = (int(color[0]), int(color[1]), int(color[2]))
-
     scale = np.array([w / s, w / s])
     p = np.int32((p[:, :2] - limits) * scale)
+    
+    #generate label colormap and labeled set
+    if nlabels > 0:
+        cmap = {}
+        for i in range(nlabels):
+            np.random.seed(i)
+            color  = np.random.randint(255, size=3)
+            cmap[i] = (int(color[0]), int(color[1]), int(color[2]))
+        labeled = np.append(p, labels[:,None], axis=1)
+        for x, y, label in labeled:
+            cv2.circle(img, (x, y), 2, cmap[label], -1, cv2.LINE_AA, shift=0)
+    else:
+        for x, y in p:
+            cv2.circle(img, (x, y), 2, (0, 0, 255), -1, cv2.LINE_AA, shift=0)
+
+    #draw unit square for reference
     xt, yt = np.int32((np.array([-.98, -.98]) - limits) * scale)
     xb, yb  = np.int32((np.array([.98, .98]) - limits) * scale)
-
-    labeled = np.append(p, labels[:,None], axis=1)
-    for x, y, label in labeled:
-        cv2.circle(img, (x, y), 2, cmap[label], -1, cv2.LINE_AA, shift=0)
     cv2.rectangle(img, (xt, yt), (xb, yb), (255, 255, 255), 3, cv2.LINE_AA)
     return img
 

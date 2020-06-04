@@ -38,8 +38,8 @@ class SinkhornTrainer:
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
         self.trail_batch = self.trail_batch.to(self.device)
         self.trail_labels = self.trail_labels.cpu().detach().numpy()
-
-        self.all_labels = torch.zeros(torch.Size([len(train_loader.dataset)]), dtype=torch.long)
+        
+        self.all_labels = torch.zeros(torch.Size([len(train_loader.dataset)]), dtype=torch.int)
         for _, (_, y, idx) in enumerate(self.train_loader):
             with torch.no_grad():
                 self.all_labels[idx] = y
@@ -109,9 +109,8 @@ class SinkhornTrainer:
     def reconstruct(self, x):
         with torch.no_grad():
             x = x.to(self.device)
-            recon_x, z = self.model(x)
+            recon_x, _ = self.model(x)
             del x
-            del z
             return recon_x
         
     def rec_loss_on_test(self, x_test):
@@ -146,7 +145,7 @@ class SinkhornTrainer:
     def loss_on_batch(self, x, curr_indices, iter):
         recalc_latents = not iter % self.recalculate_freq
         resample = not iter % self.resampling_freq
-        
+
         x = x.to(self.device)
         recon_x, z = self.model(x)
         
