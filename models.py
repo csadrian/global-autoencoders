@@ -313,10 +313,12 @@ class MlpModel(nn.Module):
             input_dim = output_dim
 
         self.decoder_layers.append(nn.Linear(input_dim, np.prod(self.input_dims)))
-        self.decoder_layers.append(nn.ReLU(True))
-        channels = self.input_dims[2]
-        size = self.input_dims[:2]
-        self.decoder_layers.append(View((-1, channels, *size)))
+        if len(self.input_dims) < 3:
+            self.decoder_layers.append(View((-1, *self.input_dims)))
+        else:
+            channels = self.input_dims[2]
+            size = self.input_dims[:2]
+            self.decoder_layers.append(View((-1, channels, *size)))
 
         return nn.Sequential(*self.decoder_layers)
 
