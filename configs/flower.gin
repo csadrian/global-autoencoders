@@ -1,19 +1,23 @@
-ExperimentRunner.dataset = 'mnist'
+ExperimentRunner.dataset = 'flower'
 ExperimentRunner.ae_model_class = @models.MlpModel
 ExperimentRunner.batch_size = 100
-ExperimentRunner.epochs = 30
+ExperimentRunner.epochs = 6
 
 models.MlpModel.z_dim=4
 models.MlpModel.distribution='normal'
 models.MlpModel.input_normalize_sym=False
 models.MlpModel.batch_norm=True
 
-models.MlpModel.e_num_layers=3
+models.MlpModel.e_num_layers=5
 models.MlpModel.e_num_filters=256
-models.MlpModel.g_num_layers=3
+models.MlpModel.g_num_layers=5
 models.MlpModel.g_num_filters=256
 
-SinkhornTrainer.reg_loss_type = 'IMQ'
+Flower.n_points = 20000
+Flower.petals = 30
+Flower.petal_width = 0.03
+
+SinkhornTrainer.reg_loss_type = 'sinkhorn'
 SinkhornTrainer.optimizer = @torch.optim.Adam
 torch.optim.Adam.lr=0.001
 torch.optim.Adam.betas=(0.5, 0.999)
@@ -21,7 +25,7 @@ torch.optim.Adam.betas=(0.5, 0.999)
 SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1
 SinkhornTrainer.reg_lambda = 10
-SinkhornTrainer.blur = 2.8 #==sqrt(C), C=2*z_dim
+SinkhornTrainer.blur = 0.05
 SinkhornTrainer.trainer_type = 'local'
 SinkhornTrainer.monitoring = False
 SinkhornTrainer.sinkhorn_scaling = 0.7

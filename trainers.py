@@ -37,9 +37,11 @@ class SinkhornTrainer:
         #In the local, no monitoring case, generate video and covered area from fixed batch.
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
         self.trail_batch = self.trail_batch.to(self.device)
+        self.trail_labels = self.trail_labels
+        label_type = self.trail_labels.dtype
         self.trail_labels = self.trail_labels.cpu().detach().numpy()
         
-        self.all_labels = torch.zeros(torch.Size([len(train_loader.dataset)]), dtype=torch.int)
+        self.all_labels = torch.zeros(torch.Size([len(train_loader.dataset)]), dtype=label_type)
         for _, (_, y, idx) in enumerate(self.train_loader):
             with torch.no_grad():
                 self.all_labels[idx] = y
