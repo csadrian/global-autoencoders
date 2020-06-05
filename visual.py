@@ -1,8 +1,9 @@
 import numpy as np
 import cv2
-#input p should be 2 dim
+
 def draw_points(p, w, labels, nlabels):
     img = np.zeros((w, w, 3), np.uint8)
+    assert len(p.shape) == 2 and p.shape[1] == 2, 'draw_points() expects 2-dim data'
     
     #rescale points
     xmin, xmax, ymin, ymax = min(min(p[:,0]), -1.), max(max(p[:,0]), 1.), min(min(p[:,1]), -1.), max(max(p[:,1]), 1.)
@@ -14,7 +15,7 @@ def draw_points(p, w, labels, nlabels):
     #generate label colormap and labeled set
     if nlabels > 0:
         cmap = {}
-        for i in range(nlabels):
+        for i in range(nlabels+1):
             np.random.seed(i)
             color  = np.random.randint(255, size=3)
             cmap[i] = (int(color[0]), int(color[1]), int(color[2]))
@@ -49,6 +50,7 @@ def draw_edges(p1, p2, w, radius, edges=True):
     return img
 
 def covered_area(zs, resolution=400, radius=10):
+    assert len(zs.shape) == 2 and zs.shape[1] == 2, 'covered_area() expects 2-dim data'
     r = radius
     m = np.zeros((resolution, resolution))
     for z in zs:

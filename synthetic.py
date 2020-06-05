@@ -13,11 +13,12 @@ import torch
 class Flower(torch.utils.data.Dataset):
     def __init__(self, train, n_points=50000,
                  petals=50, petal_length= .5, petal_width=.003, seed = 0):
+        self.petals = petals
         if train == True:
-            self.data = flower(n_points, petals, petal_length, petal_width, seed)
+            self.data, self.labels = flower(n_points, petals, petal_length, petal_width, seed)
         else:
-            self.data = flower(int(n_points/4), petals, petal_length, petal_width, seed+1)
-        self.labels = torch.full((len(self.data),), 0, dtype=torch.int)
+            self.data, self.labels  = flower(int(n_points/4), petals, petal_length, petal_width, seed+1)
+        #self.labels = torch.full((len(self.data),), 0, dtype=torch.int)
             
 
     def __len__(self):
@@ -36,8 +37,10 @@ def flower(n_points, petals, petal_length, petal_width, seed):
     #plant the flower seed
     random.seed(seed)
     flowerpoints = np.zeros([n_points, 2])
+    flowerlabels = np.zeros([n_points])
     for p in range(n_points):
         petal = random.randint(0, petals)
+        flowerlabels[p] = petal
         #find center
         if petal == 0:
             center = np.array([.5, .5])
@@ -52,7 +55,7 @@ def flower(n_points, petals, petal_length, petal_width, seed):
             radius1 *= 2
         translation = angletocoords2d(angle1, radius1)
         flowerpoints[p,:] = center + translation
-    return torch.tensor(flowerpoints, dtype = torch.float)
+    return torch.tensor(flowerpoints, dtype = torch.float), torch.tensor(flowerlabels, dtype = torch.int)
 
 #flowerpoints = flower(10000, 12, 8., 0.2)
 #plt.scatter(flowerpoints[:,0], flowerpoints[:,1])

@@ -113,7 +113,7 @@ class ExperimentRunner():
         elif self.dataset == 'flower':
             train_dataset = synthetic.Flower(train = True)
             test_dataset = synthetic.Flower(train = False)
-            self.nlabels = 0
+            self.nlabels = train_dataset.petals
         else:
             raise Exception("Dataset not found: " + dataset)
 
@@ -174,7 +174,11 @@ class ExperimentRunner():
 
     def plot_flowers(self):
         reconstruction = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
+        generated = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
+        
+        random_set = self.trainer.sample_pz(n=len(self.train_loader.dataset))
         original = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
+        
         for _, (x, _, idx) in enumerate(self.train_loader):
             #reconstruction[idx] = self.trainer.reconstruct(x)
             with torch.no_grad():
@@ -183,17 +187,14 @@ class ExperimentRunner():
                 reconstruction[idx], _ = self.model.forward(x)
                 del x
                 
-        x, y = reconstruction.detach().cpu().numpy()[:,0], reconstruction.detach().cpu().numpy()[:,1]
-        plt.scatter(x, y, s=1)
-        plt.savefig('{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
-        plt.close()        
-        neptune.send_image('train_reconstruct', x=self.global_iters, y='{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+                random_sample = random_set[idx]
+                generated[idx] = self.trainer.decode_batch(random_sample)['decode']
+                
+        utils.save_scatter(reconstruction.detach().cpu().numpy()[:,0], reconstruction.detach().cpu().numpy()[:,1], self.imagesdir, 'train_reconstructions', self.global_iters)
 
-        x, y = original.detach().cpu().numpy()[:,0], original.detach().cpu().numpy()[:,1]
-        plt.scatter(x, y, s=1)
-        plt.savefig('{}/original_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
-        plt.close()
-        neptune.send_image('original', x=self.global_iters, y='{}/original_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
+        utils.save_scatter(generated.detach().cpu().numpy()[:,0], generated.detach().cpu().numpy()[:,1], self.imagesdir, 'generated', self.global_iters)
+        
+        utils.save_scatter(original.detach().cpu().numpy()[:,0], original.detach().cpu().numpy()[:,1], self.imagesdir, 'original', self.global_iters)
 
     def test(self):
         test_encode, test_targets, test_loss, test_reg_loss, test_rec_loss = list(), list(), 0.0, 0.0, 0.0
