@@ -9,6 +9,8 @@ import numpy as np
 import torch
 
 #import matplotlib.pyplot as plt
+@gin.configurable('SquareGrid')
+class SquareGrid(torch.utils.data.Dataset):
     def __init__(self, train, n_points=20000, gridlines = 125, seed = 0):
         self.gridlines = 30
         if train == True:
@@ -29,6 +31,9 @@ def grid(n_points, n_lines, seed):
     random.seed(seed)
     n_pointsonaline = int(n_points / n_lines)
     grid_points = np.zeros([n_points, 2])
+    grid_labels = np.zeros([n_points])
+    for x in range(n_lines):
+        for y in range(n_pointsonaline):
             angle1 = 2 * math.pi * random.random()
             radius1 =  random.random() / n_lines
 
