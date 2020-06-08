@@ -1,12 +1,12 @@
-ExperimentRunner.dataset = 'flower'
+ExperimentRunner.dataset = 'square'
 ExperimentRunner.ae_model_class = @models.MlpModel
-ExperimentRunner.batch_size = 100
-ExperimentRunner.epochs = 6
+ExperimentRunner.batch_size = 50
+ExperimentRunner.epochs = 30
 
-models.MlpModel.z_dim=4
-models.MlpModel.distribution='normal'
+models.MlpModel.z_dim= 2
+models.MlpModel.distribution='flower'
 models.MlpModel.input_normalize_sym=False
-models.MlpModel.batch_norm=True
+models.MlpModel.batch_norm=False
 
 models.MlpModel.e_num_layers=5
 models.MlpModel.e_num_filters=256
@@ -14,7 +14,7 @@ models.MlpModel.g_num_layers=5
 models.MlpModel.g_num_filters=256
 
 Flower.n_points = 20000
-Flower.petals = 30
+Flower.petals = 40
 Flower.petal_width = 0.03
 
 SinkhornTrainer.reg_loss_type = 'sinkhorn'
@@ -24,8 +24,8 @@ torch.optim.Adam.betas=(0.5, 0.999)
 
 SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1
-SinkhornTrainer.reg_lambda = 10
+SinkhornTrainer.reg_lambda = 1000000
 SinkhornTrainer.blur = 0.05
-SinkhornTrainer.trainer_type = 'local'
+SinkhornTrainer.trainer_type = 'global'
 SinkhornTrainer.monitoring = False
 SinkhornTrainer.sinkhorn_scaling = 0.7

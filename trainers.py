@@ -12,6 +12,7 @@ import gin
 import gin.torch
 import gin.torch.external_configurables
 
+import synthetic
 
 @gin.configurable
 class SinkhornTrainer:
@@ -72,6 +73,11 @@ class SinkhornTrainer:
         if self.distribution in {'normal', 'sphere'}:
             base_dist = torch.distributions.normal.Normal(torch.zeros(self.model.z_dim), torch.ones(self.model.z_dim))
             dist = torch.distributions.independent.Independent(base_dist, 1)
+        elif self.distribution == 'flower':
+            seed = np.random.randint(0, 10000)
+            #ONLY 2-dim
+            sample, _ = synthetic.flower(n, 30, .5, .03, seed)
+            return sample
         elif self.distribution == 'uniform':
             base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
             dist = torch.distributions.independent.Independent(base_dist, 1)
@@ -84,7 +90,8 @@ class SinkhornTrainer:
             n = torch.norm(s, p=2, dim=1)[:, np.newaxis]
             return s / n
         else:
-            return dist.sample(torch.Size([n]))
+            sample = dist.sample(torch.Size([n]))
+            return sample
 
 
     def decode_batch(self, z):

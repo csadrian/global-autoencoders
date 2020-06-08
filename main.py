@@ -70,19 +70,24 @@ class ExperimentRunner():
         print(self.device)
 
     def setup_trainers(self):
-        nc = 1 if self.dataset in ('mnist') else 3
         if self.dataset in ('mnist'):
             input_dims = (28, 28, 1)
+            nc = 1
         elif self.dataset in ('flower'):
             input_dims = (2,)
+            nc = 1
+        elif self.dataset in ('square'):
+            input_dims = (2,)
+            nc = 1
         else:
             input_dims = (64, 64, 3)
+            nc = 3
 
         self.model = self.ae_model_class(nc=nc, input_dims=input_dims)
         self.model.to(self.device)
         self.distribution = self.model.distribution
 
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader,  distribution=self.distribution)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader, distribution=self.distribution)
 
     def generate_frame(self, z, labels, frame_size):
         latents = z
@@ -91,6 +96,7 @@ class ExperimentRunner():
         #nat = self.trainer.pz_sample
         #nat = nat.cpu()
         #nat = nat.detach().numpy()
+        #if self.dataset == 'mnist':
         if self.distribution == 'normal':
             latents = norm.cdf(latents) * 2 - 1
             #nat = norm.cdf(nat) * 2 - 1
@@ -114,6 +120,10 @@ class ExperimentRunner():
             train_dataset = synthetic.Flower(train = True)
             test_dataset = synthetic.Flower(train = False)
             self.nlabels = train_dataset.petals
+        elif self.dataset == 'square':
+            train_dataset = synthetic.SquareGrid(train = True)
+            test_dataset = synthetic.SquareGrid(train = False)
+            self.nlabels = 0            
         else:
             raise Exception("Dataset not found: " + dataset)
 
@@ -155,6 +165,8 @@ class ExperimentRunner():
         video.close()
         
     def plot_latent_2d(self, test_encode, test_targets, test_loss):
+        if self.trainer.distribution == 'flower':
+            test_encode = test_encode * 2 - 1.
         # save encoded samples plot
         plt.figure(figsize=(10, 10))
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
@@ -229,7 +241,7 @@ class ExperimentRunner():
             _, (x, _, _) = enumerate(self.train_loader, start=0).__next__()
             train_reconstruct = self.trainer.reconstruct(x)
             gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
-        if self.dataset == 'flower':
+        if self.dataset == 'flower' or self.dataset == 'square':
             self.plot_flowers()
         else:
             self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])

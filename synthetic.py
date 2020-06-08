@@ -9,6 +9,33 @@ import numpy as np
 import torch
 
 #import matplotlib.pyplot as plt
+    def __init__(self, train, n_points=20000, gridlines = 125, seed = 0):
+        self.gridlines = 30
+        if train == True:
+            self.data, self.labels  = grid(n_points, gridlines, seed)
+        else:
+            self.data, self.labels  = grid(int(n_points /4), gridlines, seed + 1)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx):
+        if torch.is_tensor(idx):
+            idx = idx.tolist()
+        return self.data[idx,:], self.labels[idx]
+
+#to avoid multiple points in 0, let n_lines divide n_points (simple implementation)
+def grid(n_points, n_lines, seed):
+    random.seed(seed)
+    n_pointsonaline = int(n_points / n_lines)
+    grid_points = np.zeros([n_points, 2])
+            angle1 = 2 * math.pi * random.random()
+            radius1 =  random.random() / n_lines
+
+            grid_points[x * n_pointsonaline + y,:] = np.array([x / n_lines,  y / n_pointsonaline]) + angletocoords2d(angle1, radius1) / n_pointsonaline
+    return torch.tensor(grid_points, dtype = torch.float), torch.tensor(grid_labels, dtype = torch.int)
+
+
 @gin.configurable('Flower')
 class Flower(torch.utils.data.Dataset):
     def __init__(self, train, n_points=50000,
@@ -50,9 +77,10 @@ def flower(n_points, petals, petal_length, petal_width, seed):
             center = np.array([.5, .5]) + angletocoords2d(angle0, radius0)
 
         angle1 = 2 * math.pi * random.random()
-        radius1 = petal_width * random.random() * (.75 + -abs(radius0 / petal_length - .75))
         if petal == 0:
-            radius1 *= 2
+            radius1 = 2 * petal_width * random.random()
+        else:
+            radius1 = petal_width * random.random() * (.75 + -abs(radius0 / petal_length - .75))
         translation = angletocoords2d(angle1, radius1)
         flowerpoints[p,:] = center + translation
     return torch.tensor(flowerpoints, dtype = torch.float), torch.tensor(flowerlabels, dtype = torch.int)
