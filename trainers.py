@@ -1,4 +1,3 @@
-
 import numpy as np
 
 import torch
@@ -63,11 +62,8 @@ class SinkhornTrainer:
         self.nat_size = nat_size
         self.pz_sample = self.sample_pz(self.nat_size).to(self.device)
 
-        # If monitoring, save all x_latents. Otherwise only nat_size many x_latents are required.
-        if monitoring:
-            self.x_latents = torch.zeros(torch.Size([len(train_loader.dataset), self.model.z_dim])).to(self.device).detach()
-        else:
-            self.x_latents = torch.zeros(torch.Size([self.nat_size, self.model.z_dim])).to(self.device).detach()
+        # Save all x_latents for global_train_reg_loss.
+        self.x_latents = torch.zeros(torch.Size([len(train_loader.dataset), self.model.z_dim])).to(self.device).detach()
 
     def sample_pz(self, n=100):
         if self.distribution in {'normal', 'sphere'}:
@@ -182,10 +178,7 @@ class SinkhornTrainer:
                 z_prime = z
             elif self.trainer_type == 'global':
                 z_prime = self.x_latents
-            #if self.reg_loss_type == 'gaussian':
-#                self.blur = self.sigma_median_heuristic(z_prime, self.pz_sample)
-                #print(sigma)
-                #self.reg_loss_fn = SamplesLoss(loss='gaussian', p=2, blur=self.blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+
             reg_loss = self.reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples
             loss = bce + float(self.reg_lambda) * reg_loss
         else:

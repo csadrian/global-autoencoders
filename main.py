@@ -89,23 +89,16 @@ class ExperimentRunner():
 
         self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader, distribution=self.distribution)
 
-    def generate_frame(self, z, labels, frame_size):
+    def normalize_latents(self, z):
         latents = z
         latents = latents.cpu()
         latents = latents.detach().numpy()
-        #nat = self.trainer.pz_sample
-        #nat = nat.cpu()
-        #nat = nat.detach().numpy()
-        #if self.dataset == 'mnist':
         if self.distribution == 'normal':
             latents = norm.cdf(latents) * 2 - 1
-            #nat = norm.cdf(nat) * 2 - 1
         if self.distribution == 'sphere':    
             latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
-            #nat = norm.cdf(nat * math.sqrt(self.model.z_dim)) * 2 - 1
-        return visual.draw_points(latents[:, :2], frame_size, labels, self.nlabels), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
-        #return visual.draw_edges(nat, latents, VIDEO_SIZE, radius = 1.5, edges = False), visual.covered_area(latents[:, :2], resolution = 700, radius = 3)
- 
+        return latents[:, :2]
+
     def setup_data_loaders(self):
 
         if self.dataset == 'celeba':
@@ -143,9 +136,10 @@ class ExperimentRunner():
                 for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                     print(self.epoch, batch_idx, self.global_iters, len(x), len(self.train_loader))
                     self.global_iters += 1
-                    batch = self.trainer.train_on_batch(x, idx, self.global_iters)
-
-                    frame, covered = self.generate_frame(batch['video']['latents'], batch['video']['labels'], VIDEO_SIZE)
+                    batch = self.trainer.train_on_batch(x, idx, self.global_iters)                
+                    normalized_latents = self.normalize_latents(batch['video']['latents'])
+                    frame = visual.draw_points(normalized_latents, VIDEO_SIZE, batch['video']['labels'], self.nlabels)
+                    
                     video.write_frame(frame)
 
                     if self.global_iters % self.log_interval == 0:                        
@@ -153,10 +147,15 @@ class ExperimentRunner():
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
                         neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
                         neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
-                        if self.trainer.monitoring == True or self.trainer.trainer_type == 'global':
-                            neptune.send_metric('covered_area', x=self.global_iters, y=covered)
                         neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
                         neptune.send_metric('blur-sigma', x=self.global_iters, y=batch['blur'])               
+                        #compute global train_reg_loss to compare with local
+                        if self.trainer.trainer_type == 'local':
+                            with torch.no_grad():
+                                self.trainer.recalculate_latents()
+                                pz_sample = self.trainer.sample_pz(len(self.train_loader.dataset)).to(self.device)
+                                global_train_reg_loss = self.trainer.reg_loss_fn(self.trainer.x_latents, pz_sample.detach())   
+                                neptune.send_metric('global_train_reg_loss', x=self.global_iters, y=global_train_reg_loss)    
                         
 
                         if self.global_iters % self.plot_interval == 0:
@@ -192,7 +191,6 @@ class ExperimentRunner():
         original = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
         
         for _, (x, _, idx) in enumerate(self.train_loader):
-            #reconstruction[idx] = self.trainer.reconstruct(x)
             with torch.no_grad():
                 x = x.to(self.device)
                 original[idx] = x
@@ -210,41 +208,43 @@ class ExperimentRunner():
 
     def test(self):
         test_encode, test_targets, test_loss, test_reg_loss, test_rec_loss = list(), list(), 0.0, 0.0, 0.0
+        full_test_encode = torch.zeros(torch.Size([len(self.test_loader.dataset),self.model.z_dim])).to(self.device).detach()
         
         with torch.no_grad():
-            for test_batch_idx, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):
+            for _, (x_test, y_test, idx) in enumerate(self.test_loader, start=0):                
                 test_evals = self.trainer.rec_loss_on_test(x_test)
+                full_test_encode[idx] = test_evals['encode'].detach()
                 test_encode.append(test_evals['encode'].detach())
                 test_rec_loss += test_evals['rec_loss'].item()
 
                 test_targets.append(y_test)
             
+            normalized_latents = self.normalize_latents(full_test_encode)
+            covered = visual.covered_area(normalized_latents, resolution = 700, radius = 3)
+            test_rec_loss /= len(self.test_loader)
             test_reg_loss = self.trainer.reg_loss_on_test().item()
-            test_loss = test_rec_loss + test_reg_loss
+            test_loss = test_rec_loss + self.trainer.reg_lambda * test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
-        test_loss /= len(self.test_loader.dataset)
-        test_rec_loss /= len(self.test_loader.dataset)
-        test_reg_loss /= len(self.test_loader.dataset)
 
         print('Test Epoch: {} ({:.2f}%)\tLoss: {:.6f}'.format(self.epoch + 1, float(self.epoch + 1) / (self.epochs) * 100., test_loss))
-
         neptune.send_metric('test_loss', x=self.global_iters, y=test_loss)
         neptune.send_metric('test_reg_loss', x=self.global_iters, y=test_reg_loss)
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
+        neptune.send_metric('test_covered_area', x=self.global_iters, y=covered)
         
         self.plot_latent_2d(test_encode, test_targets, test_loss)
-
-        with torch.no_grad():
-            _, (x, _, _) = enumerate(self.test_loader, start=0).__next__()
-            test_reconstruct = self.trainer.reconstruct(x)
-
-            _, (x, _, _) = enumerate(self.train_loader, start=0).__next__()
-            train_reconstruct = self.trainer.reconstruct(x)
-            gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
+        
         if self.dataset == 'flower' or self.dataset == 'square':
             self.plot_flowers()
         else:
-            self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])
+            with torch.no_grad():
+                _, (x, _, _) = enumerate(self.test_loader, start=0).__next__()
+                test_reconstruct = self.trainer.reconstruct(x)
+
+                _, (x, _, _) = enumerate(self.train_loader, start=0).__next__()
+                train_reconstruct = self.trainer.reconstruct(x)
+                gen_batch = self.trainer.decode_batch(self.trainer.sample_pz(n=self.batch_size))
+                self.plot_images(x, train_reconstruct, test_reconstruct, gen_batch['decode'])
 
 
 def main(argv):
