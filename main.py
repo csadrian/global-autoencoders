@@ -32,7 +32,7 @@ import math
 @gin.configurable('ExperimentRunner')
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -45,6 +45,7 @@ class ExperimentRunner():
         self.prefix = prefix
         self.dataset = dataset
         self.ae_model_class = ae_model_class
+        self.limit_train_size = limit_train_size
 
         self.setup_environment()
         self.setup_torch()
@@ -120,8 +121,10 @@ class ExperimentRunner():
         else:
             raise Exception("Dataset not found: " + dataset)
 
+        if self.limit_train_size is not None:
+            train_dataset = torch.utils.data.random_split(train_dataset, [self.limit_train_size, len(train_dataset)-self.limit_train_size])[0]
+
         self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(train_dataset), batch_size=self.batch_size, shuffle=True, **self.dataloader_kwargs)
-        
         self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(test_dataset), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
 
     def train(self): 

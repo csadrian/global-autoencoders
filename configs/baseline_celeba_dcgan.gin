@@ -1,7 +1,7 @@
 ExperimentRunner.dataset = 'celeba'
 ExperimentRunner.ae_model_class = @models.DcganModel
 ExperimentRunner.batch_size = 100
-ExperimentRunner.epochs = 1
+ExperimentRunner.epochs = 50
 
 models.DcganModel.z_dim=64
 models.DcganModel.distribution='sphere'
@@ -16,7 +16,7 @@ models.DcganModel.g_num_layers=4
 models.DcganModel.g_num_filters=1024
 
 SinkhornTrainer.optimizer = @torch.optim.Adam
-torch.optim.Adam.lr=0.001
+torch.optim.Adam.lr=0.0005
 torch.optim.Adam.betas=(0.5, 0.999)
 
 SinkhornTrainer.resampling_freq = 1
