@@ -32,7 +32,7 @@ import math
 @gin.configurable('ExperimentRunner')
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -46,7 +46,8 @@ class ExperimentRunner():
         self.dataset = dataset
         self.ae_model_class = ae_model_class
         self.limit_train_size = limit_train_size
-
+        self.trail_label_idx = trail_label_idx
+        
         self.setup_environment()
         self.setup_torch()
 
@@ -88,7 +89,7 @@ class ExperimentRunner():
         self.model.to(self.device)
         self.distribution = self.model.distribution
 
-        self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader, distribution=self.distribution)
+        self.trainer = trainers.SinkhornTrainer(self.model, self.device, batch_size = self.batch_size, train_loader=self.train_loader, test_loader=self.test_loader, distribution=self.distribution, trail_label_idx = self.trail_label_idx)
 
     def normalize_latents(self, z):
         latents = z
@@ -234,7 +235,9 @@ class ExperimentRunner():
         neptune.send_metric('test_reg_loss', x=self.global_iters, y=test_reg_loss)
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         neptune.send_metric('test_covered_area', x=self.global_iters, y=covered)
-        
+        if len(test_targets.shape) == 2:
+            test_targets = test_targets[:,self.trail_label_idx]
+            
         self.plot_latent_2d(test_encode, test_targets, test_loss)
         
         if self.dataset == 'flower' or self.dataset == 'square':
