@@ -24,7 +24,7 @@ SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1
 SinkhornTrainer.reg_lambda = [0.001, 1.0, 100.0, 10000.0, 1000000.0]
 SinkhornTrainer.trainer_type = ['local', 'global']
-SinkhornTrainer.monitoring = True
+SinkhornTrainer.monitoring = False
 SinkhornTrainer.sinkhorn_scaling = 0.7
 
 descartes_builder.name = 'baseline_celeba_dcgan_limited60k'
