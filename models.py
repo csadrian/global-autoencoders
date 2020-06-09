@@ -12,6 +12,8 @@ import math
 import padding
 import numpy as np
 
+import math
+
 class View(nn.Module):
     def __init__(self, size):
         super(View, self).__init__()
@@ -169,11 +171,11 @@ class DcganModel(nn.Module):
         self.decoder_layers = []
 
         if self.dcgan_mod:
-            height = math.ceil(self.input_dims[0] / 2**self.g_num_layers)
-            width = math.ceil(self.input_dims[1] / 2**self.g_num_layers)
-        else:
             height = math.ceil(self.input_dims[0] / 2**(self.g_num_layers - 1)) 
             width = math.ceil(self.input_dims[1] / 2**(self.g_num_layers - 1))
+        else:
+            height = math.ceil(self.input_dims[0] / 2**self.g_num_layers)
+            width = math.ceil(self.input_dims[1] / 2**self.g_num_layers)
 
         layer = nn.Linear(self.z_dim, self.g_num_filters * height * width)
         self.decoder_layers.append(layer)
@@ -183,30 +185,46 @@ class DcganModel(nn.Module):
 
         self.decoder_layers.append(nn.ReLU(True))
 
+        def calculate_padding(input_size, output_size, strides, kernel_size):
+            
+            padding_height = math.ceil((strides[0] * (input_size[0] - 1) + kernel_size[0] - output_size[0]) / 2)
+            padding_width  = math.ceil((strides[1] * (input_size[1] - 1) + kernel_size[1] - output_size[1]) / 2)
+            return (padding_height, padding_width)
+
+
         channels_in = self.g_num_filters
 
+        _out_shape = (height, width)
         for i in range(self.g_num_layers - 1):
             scale = 2**(i + 1)
+            _in_shape = _out_shape
             _out_shape = [height * scale, width * scale, int(self.g_num_filters / scale)]
             channels_out = _out_shape[2]
 
-            self.decoder_layers.append(nn.Upsample(scale_factor=2))
-            self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (1, 1), (1, 1)))
-            self.decoder_layers.append(nn.Conv2d(channels_in, channels_out, self.filter_size, stride=1))
+            #self.decoder_layers.append(nn.Upsample(scale_factor=2))
+            #self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (1, 1), (1, 1)))
+            #self.decoder_layers.append(nn.Conv2d(channels_in, channels_out, self.filter_size, stride=1))
 
+            padding = calculate_padding(_in_shape[:2], _out_shape[:2], strides=(2, 2), kernel_size=(self.filter_size, self.filter_size))
+            self.decoder_layers.append(nn.ConvTranspose2d(channels_in, channels_out, self.filter_size, stride=2, padding=padding, output_padding=1))
             if self.batch_norm:
                 self.decoder_layers.append(nn.BatchNorm2d(channels_out))
 
             self.decoder_layers.append(nn.ReLU(True))
             channels_in = channels_out
 
-        self.decoder_layers.append(nn.Upsample(scale_factor=2))
+        _in_shape = _out_shape
+        scale=2**(self.g_num_layers-1)
+        _out_shape = [height * scale, width * scale, int(self.g_num_filters / scale)]
+        
+        #self.decoder_layers.append(nn.Upsample(scale_factor=2))
         if self.dcgan_mod:
-            self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (1, 1), (1, 1)))
-            layer = nn.Conv2d(channels_in, self.input_dims[-1], self.filter_size, stride=1)
+            #self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (1, 1), (1, 1)))
+            padding = calculate_padding(_in_shape[:2], _out_shape[:2], strides=(1, 1), kernel_size=(self.filter_size, self.filter_size))
+            layer = nn.ConvTranspose2d(channels_in, self.input_dims[-1], self.filter_size, stride=1, padding=padding)
         else:
-            self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (2, 2), (1, 1)))
-            layer = nn.Conv2d(channels_in, self.input_dims[-1], self.filter_size, stride=2)
+            #self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (2, 2), (1, 1)))
+            layer = nn.ConvTranspose2d(channels_in, self.input_dims[-1], self.filter_size, stride=2, padding=padding)
         self.decoder_layers.append(layer)
 
         return nn.Sequential(*self.decoder_layers)

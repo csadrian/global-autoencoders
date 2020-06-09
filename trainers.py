@@ -16,7 +16,9 @@ import synthetic
 
 @gin.configurable
 class SinkhornTrainer:
-    def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, reg_loss_type = 'sinkhorn', blur = 0.05):
+    def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, 
+                    train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, 
+                    reg_loss_type = 'sinkhorn', blur = 0.05, trail_label_idx=0):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -34,6 +36,7 @@ class SinkhornTrainer:
         self.recalculate_freq = recalculate_freq
         self.reg_loss_type = reg_loss_type
         self.blur = blur
+        self.trail_label_idx = trail_label_idx
         
         #In the local, no monitoring case, generate video and covered area from fixed batch.
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
@@ -45,8 +48,13 @@ class SinkhornTrainer:
         self.all_labels = torch.zeros(torch.Size([len(train_loader.dataset)]), dtype=label_type)
         for _, (_, y, idx) in enumerate(self.train_loader):
             with torch.no_grad():
-                self.all_labels[idx] = y
+                self.all_labels[idx] = y if len(self.trail_labels.shape) < 2 else y[:, self.trail_label_idx]
         self.all_labels = self.all_labels.cpu().detach().numpy()
+
+        # If there are multiple labels, use trail_label_idx
+        if len(self.trail_labels.shape) == 2:
+            self.trail_labels = self.trail_labels[self.trail_label_idx]
+
  
         if reg_loss_type in {'sinkhorn', 'gaussian', 'energy', 'laplacian', 'IMQ'}:
             self.reg_loss_fn = SamplesLoss(loss=reg_loss_type, p=2, blur=blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
