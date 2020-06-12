@@ -17,7 +17,8 @@ import synthetic
 class SinkhornTrainer:
     def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, 
                     train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, 
-                    reg_loss_type = 'sinkhorn', blur = 0.05, trail_label_idx=0):
+                    reg_loss_type = 'sinkhorn', blur = None, trail_label_idx=0,
+                 full_backprop = False):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -34,8 +35,8 @@ class SinkhornTrainer:
         self.resampling_freq = resampling_freq
         self.recalculate_freq = recalculate_freq
         self.reg_loss_type = reg_loss_type
-        self.blur = blur
         self.trail_label_idx = trail_label_idx
+        self.full_backprop = full_backprop
         
         #In the local, no monitoring case, generate video and covered area from fixed batch.
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
@@ -56,7 +57,19 @@ class SinkhornTrainer:
 
  
         if reg_loss_type in {'sinkhorn', 'gaussian', 'energy', 'laplacian', 'IMQ'}:
-            self.reg_loss_fn = SamplesLoss(loss=reg_loss_type, p=2, blur=blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+            if blur:
+                self.blur = blur
+            #else set default blur parameter using heuristics
+            elif reg_loss_type == 'sinkhorn':
+                self.blur = 0.05
+            elif reg_loss_type == 'gaussian':
+                #this is sigma_median_heuristic value for mnist, tune otherwise
+                self.blur = 4.
+            elif reg_loss_type == 'IMQ':
+                self.blur = np.sqrt(2*self.model.z_dim)
+            elif reg_loss_type == 'laplacian':
+                self.blur = 1.
+            self.reg_loss_fn = SamplesLoss(loss=reg_loss_type, p=2, blur=self.blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
         else:
             assert False, 'reg_loss not implemented'
             
@@ -218,9 +231,15 @@ class SinkhornTrainer:
         if self.reg_lambda == 0.0:
             return
 
-        for batch_idx, (x, y, idx) in enumerate(self.train_loader):
-            with torch.no_grad():
+        if self.full_backprop:
+            for batch_idx, (x, y, idx) in enumerate(self.train_loader):
                 x = x.to(self.device)
                 self.x_latents[idx] = self.model._encode(x)
                 del x
+        else:
+            for batch_idx, (x, y, idx) in enumerate(self.train_loader):
+                with torch.no_grad():
+                    x = x.to(self.device)
+                    self.x_latents[idx] = self.model._encode(x)
+                    del x
  

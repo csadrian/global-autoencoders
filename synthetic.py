@@ -83,7 +83,7 @@ def flower(n_points, petals, petal_length, petal_width, seed):
 
         angle1 = 2 * math.pi * random.random()
         if petal == 0:
-            radius1 = 2 * petal_width * random.random()
+            radius1 = petal_width * random.random() / 2 #2 * petal_width * random.random()
         else:
             radius1 = petal_width * random.random() * (.75 + -abs(radius0 / petal_length - .75))
         translation = angletocoords2d(angle1, radius1)

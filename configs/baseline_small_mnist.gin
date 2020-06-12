@@ -21,7 +21,6 @@ torch.optim.Adam.betas=(0.5, 0.999)
 SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1
 SinkhornTrainer.reg_lambda = 10
-SinkhornTrainer.blur = 2.8 #==sqrt(C), C=2*z_dim
 SinkhornTrainer.trainer_type = 'local'
 SinkhornTrainer.monitoring = False
 SinkhornTrainer.sinkhorn_scaling = 0.7
