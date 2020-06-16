@@ -7,6 +7,8 @@ import os, sys
 import torch
 import torch.optim
 
+import PIL
+
 import neptune
 import gin
 import gin.torch
@@ -104,8 +106,9 @@ class ExperimentRunner():
     def setup_data_loaders(self):
 
         if self.dataset == 'celeba':
-            train_dataset = datasets.CelebA(self.datadir, split='train', target_type='attr', download=True, transform=transforms.Compose([transforms.Scale((64,64)), transforms.ToTensor()]))
-            test_dataset = datasets.CelebA(self.datadir, split='test', target_type='attr', download=True, transform=transforms.Compose([transforms.Scale((64, 64)), transforms.ToTensor()]))
+            transform = transforms.Compose([transforms.CenterCrop(140), transforms.Resize((64,64),PIL.Image.ANTIALIAS), transforms.ToTensor()])
+            train_dataset = datasets.CelebA(self.datadir, split='train', target_type='attr', download=True, transform=transform)
+            test_dataset = datasets.CelebA(self.datadir, split='test', target_type='attr', download=True, transform=transform)
             self.nlabels = 0
         elif self.dataset == 'mnist':
             train_dataset = datasets.MNIST(self.datadir, train=True, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
@@ -149,18 +152,20 @@ class ExperimentRunner():
                     if self.global_iters % self.log_interval == 0:                        
                         print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])
-                        neptune.send_metric('train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
-                        neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
-                        neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
-                        neptune.send_metric('blur-sigma', x=self.global_iters, y=batch['blur'])               
-                        #compute global train_reg_loss to compare with local
+                        #report global and local reg_losses
                         if self.trainer.trainer_type == 'local':
                             with torch.no_grad():
                                 self.trainer.recalculate_latents()
                                 pz_sample = self.trainer.sample_pz(len(self.train_loader.dataset)).to(self.device)
                                 global_train_reg_loss = self.trainer.reg_loss_fn(self.trainer.x_latents, pz_sample.detach())   
-                                neptune.send_metric('global_train_reg_loss', x=self.global_iters, y=global_train_reg_loss)    
-                        
+                                neptune.send_metric('global_train_reg_loss', x=self.global_iters, y=global_train_reg_loss)
+                                neptune.send_metric('local_train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
+                        else:
+                            neptune.send_metric('global_train_reg_loss', x=self.global_iters, y=batch['reg_loss'])
+                            
+                        neptune.send_metric('train_rec_loss', x=self.global_iters, y=batch['rec_loss'])
+                        neptune.send_metric('reg_lambda', x=self.global_iters, y=batch['reg_lambda'])
+                        neptune.send_metric('blur-sigma', x=self.global_iters, y=batch['blur'])               
 
                         if self.global_iters % self.plot_interval == 0:
                             self.test()

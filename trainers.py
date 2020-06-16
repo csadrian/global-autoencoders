@@ -93,7 +93,7 @@ class SinkhornTrainer:
         elif self.distribution == 'flower':
             seed = np.random.randint(0, 10000)
             #ONLY 2-dim
-            sample, _ = synthetic.flower(n, 30, .5, .03, seed)
+            sample, _ = synthetic.flower(n, 6, .5, .2, seed)#30, .5, .03, seed)
             return sample
         elif self.distribution == 'uniform':
             base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))

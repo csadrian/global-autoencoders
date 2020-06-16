@@ -1,0 +1,29 @@
+ExperimentRunner.dataset = 'mnist'
+ExperimentRunner.ae_model_class = @models.DcganModel
+ExperimentRunner.batch_size = 100
+ExperimentRunner.epochs = 50
+
+models.DcganModel.z_dim=8
+models.DcganModel.distribution='normal'
+models.DcganModel.input_normalize_sym=False
+models.DcganModel.batch_norm=True
+models.DcganModel.dcgan_mod=True
+models.DcganModel.filter_size=5
+
+models.DcganModel.e_num_layers=4
+models.DcganModel.e_num_filters=1024
+models.DcganModel.g_num_layers=3
+models.DcganModel.g_num_filters=1024
+
+SinkhornTrainer.reg_loss_type = 'IMQ'
+SinkhornTrainer.optimizer = @torch.optim.Adam
+torch.optim.Adam.lr=0.001
+torch.optim.Adam.betas=(0.5, 0.999)
+
+SinkhornTrainer.full_backprop = False
+SinkhornTrainer.resampling_freq = 1
+SinkhornTrainer.recalculate_freq = 1
+SinkhornTrainer.reg_lambda = 10
+SinkhornTrainer.trainer_type = 'local'
+SinkhornTrainer.monitoring = False
+SinkhornTrainer.sinkhorn_scaling = 0.7
