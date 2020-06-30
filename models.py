@@ -186,10 +186,17 @@ class DcganModel(nn.Module):
         self.decoder_layers.append(nn.ReLU(True))
 
         def calculate_padding(input_size, output_size, strides, kernel_size):
+
+            double_height = strides[0] * (input_size[0] - 1) + kernel_size[0] - output_size[0]
+            double_width = strides[1] * (input_size[1] - 1) + kernel_size[1] - output_size[1]
             
-            padding_height = math.ceil((strides[0] * (input_size[0] - 1) + kernel_size[0] - output_size[0]) / 2)
-            padding_width  = math.ceil((strides[1] * (input_size[1] - 1) + kernel_size[1] - output_size[1]) / 2)
-            return (padding_height, padding_width)
+            padding_height = math.ceil(double_height / 2)
+            padding_width  = math.ceil(double_width / 2)
+
+            remainder_height = double_height % 2
+            remainder_width = double_width % 2
+
+            return (padding_height, padding_width), (remainder_height, remainder_width)
 
 
         channels_in = self.g_num_filters
@@ -204,9 +211,13 @@ class DcganModel(nn.Module):
             #self.decoder_layers.append(nn.Upsample(scale_factor=2))
             #self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (1, 1), (1, 1)))
             #self.decoder_layers.append(nn.Conv2d(channels_in, channels_out, self.filter_size, stride=1))
-
-            padding = calculate_padding(_in_shape[:2], _out_shape[:2], strides=(2, 2), kernel_size=(self.filter_size, self.filter_size))
-            self.decoder_layers.append(nn.ConvTranspose2d(channels_in, channels_out, self.filter_size, stride=2, padding=padding, output_padding=1))
+            
+            #h_o = (h_i-1) * s - 2 * p + k + op
+            padding, extra = calculate_padding(_in_shape[:2], _out_shape[:2], strides=(2, 2), kernel_size=(self.filter_size, self.filter_size))
+            if extra[0] != 0 or extra[1] != 0:
+                self.decoder_layers.append(nn.ConvTranspose2d(channels_in, channels_out, self.filter_size, stride=2, padding=padding, output_padding=1))
+            else:    
+                self.decoder_layers.append(nn.ConvTranspose2d(channels_in, channels_out, self.filter_size, stride=2, padding=padding))#, output_padding=1))
             if self.batch_norm:
                 self.decoder_layers.append(nn.BatchNorm2d(channels_out))
 
@@ -220,7 +231,10 @@ class DcganModel(nn.Module):
         #self.decoder_layers.append(nn.Upsample(scale_factor=2))
         if self.dcgan_mod:
             #self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (1, 1), (1, 1)))
-            padding = calculate_padding(_in_shape[:2], _out_shape[:2], strides=(1, 1), kernel_size=(self.filter_size, self.filter_size))
+            padding, extra = calculate_padding(_in_shape[:2], _out_shape[:2], strides=(1, 1), kernel_size=(self.filter_size, self.filter_size))
+
+            if extra[0] != 0 or extra[1] != 0:
+                self.decoder_layers.append(nn.ConstantPad2d((0, extra[0], 0, extra[1]), 0))
             layer = nn.ConvTranspose2d(channels_in, self.input_dims[-1], self.filter_size, stride=1, padding=padding)
         else:
             #self.decoder_layers.append(PadSame((self.filter_size, self.filter_size), (2, 2), (1, 1)))
