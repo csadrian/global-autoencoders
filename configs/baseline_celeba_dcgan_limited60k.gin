@@ -24,6 +24,6 @@ SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1
 SinkhornTrainer.reg_lambda = 100.0
 SinkhornTrainer.trainer_type ='local'
-SinkhornTrainer.monitoring = True
+SinkhornTrainer.monitoring = False
 SinkhornTrainer.sinkhorn_scaling = 0.7
 

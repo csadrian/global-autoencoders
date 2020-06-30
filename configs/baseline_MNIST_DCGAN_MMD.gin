@@ -1,14 +1,14 @@
 ExperimentRunner.dataset = 'mnist'
 ExperimentRunner.ae_model_class = @models.DcganModel
 ExperimentRunner.batch_size = 100
-ExperimentRunner.epochs = 50
+ExperimentRunner.epochs = 100
 
 models.DcganModel.z_dim=8
 models.DcganModel.distribution='normal'
 models.DcganModel.input_normalize_sym=False
 models.DcganModel.batch_norm=True
 models.DcganModel.dcgan_mod=True
-models.DcganModel.filter_size=5
+models.DcganModel.filter_size=4
 
 models.DcganModel.e_num_layers=4
 models.DcganModel.e_num_filters=1024
