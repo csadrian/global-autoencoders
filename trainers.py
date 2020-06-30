@@ -34,7 +34,6 @@ class SinkhornTrainer:
         self.trainer_type = trainer_type
         self.resampling_freq = resampling_freq
         self.recalculate_freq = recalculate_freq
-        self.reg_loss_type = reg_loss_type
         self.trail_label_idx = trail_label_idx
         self.full_backprop = full_backprop
         
@@ -57,6 +56,7 @@ class SinkhornTrainer:
 
  
         if reg_loss_type in {'sinkhorn', 'gaussian', 'energy', 'laplacian', 'IMQ'}:
+            cost = None
             if blur:
                 self.blur = blur
             #else set default blur parameter using heuristics
@@ -66,10 +66,16 @@ class SinkhornTrainer:
                 #this is sigma_median_heuristic value for mnist, tune otherwise
                 self.blur = 4.
             elif reg_loss_type == 'IMQ':
+                cost = "IntCst(1)/(IntCst(1)+SqDist(X,Y))"
+                #specifies kernel method, kernel determined by cost
+                reg_loss_type = 'gaussian'
                 self.blur = np.sqrt(2*self.model.z_dim)
             elif reg_loss_type == 'laplacian':
                 self.blur = 1.
-            self.reg_loss_fn = SamplesLoss(loss=reg_loss_type, p=2, blur=self.blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+                
+            self.reg_loss_fn = SamplesLoss(loss=reg_loss_type, cost = cost, p=2, blur=self.blur, backend='online', scaling = self.sinkhorn_scaling, verbose=True)
+            self.cost = cost
+            self.reg_loss_type = reg_loss_type
         else:
             assert False, 'reg_loss not implemented'
             
