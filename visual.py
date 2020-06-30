@@ -54,9 +54,19 @@ def draw_edges(p1, p2, w, radius, edges=True):
         cv2.circle(img, (x1, y1), 3, (255, 0, 0), -1, cv2.LINE_AA)
     return img
 
-def covered_area(zs, resolution=400, radius=10):
+def covered_area(zs):#, resolution=400, radius=10):
     assert len(zs.shape) == 2 and zs.shape[1] == 2, 'covered_area() expects 2-dim data'
-    r = radius
+
+    #Heuristic.
+    #-If disjoint: N * area(disk) = area(square)
+    #        i.e.: N * radius^2 = resolution^2
+    #-radius = 2
+    N = zs.shape[0]
+    r = 2
+    #-the final resolution tuned by epsilon for some robustness
+    epsilon = 1.1
+    resolution = int(np.sqrt(N * r **2) * epsilon)
+
     m = np.zeros((resolution, resolution))
     for z in zs:
         zr = (resolution * (z + 1) / 2).astype(int)

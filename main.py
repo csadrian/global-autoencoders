@@ -241,7 +241,7 @@ class ExperimentRunner():
                 test_targets.append(y_test)
             
             normalized_latents = self.normalize_latents(full_test_encode)
-            covered = visual.covered_area(normalized_latents, resolution = 700, radius = 3)
+            covered = visual.covered_area(normalized_latents)
             test_rec_loss /= len(self.test_loader)
             test_reg_loss = self.trainer.reg_loss_on_test().item()
             test_loss = test_rec_loss + self.trainer.reg_lambda * test_reg_loss
