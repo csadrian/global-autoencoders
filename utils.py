@@ -6,13 +6,15 @@ def save_image(x, name, it, filename, normalize=True):
     vutils.save_image(x, filename, normalize=normalize)
     neptune.send_image(name, x=it, y=filename)
 
-def save_scatter(x, y, filedir, name, it):
-    filename = '{}/{}_epoch_{}.png'.format(filedir, name, it+1)
+def save_scatter(x, y, filedir, name, it, other_extensions = ['pdf']):
+    filename = '{}/{}_epoch_{}.'.format(filedir, name, it+1)
+    extensions = ['png'] + other_extensions
     plt.scatter(x, y, s=1)
-    plt.savefig(filename)
+    for ext in extensions:
+        plt.savefig(filename+'{}'.format(ext))
     plt.close()
-    neptune.send_image(name, x=it, y=filename)
-
+    neptune.send_image(name, x=it, y=filename+'png')
+    
 
 def get_gin_params_as_dict(gin_config):
     params = {}
