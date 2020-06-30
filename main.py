@@ -34,11 +34,17 @@ import math
 @gin.configurable('ExperimentRunner')
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=1, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=None, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, num_iterations= None,  prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0, full_video = False):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
-        self.epochs = epochs
+        if epochs and num_iterations:
+            assert False, 'Please only specify either epochs or iterations.'
+        elif epochs == None and num_iterations == None:
+            assert False, 'Please specify epochs or iterations.'
+        else:
+            self.epochs = epochs
+            self.num_iterations = num_iterations
         self.log_interval = log_interval
         self.plot_interval = plot_interval
         self.outdir = outdir
@@ -49,7 +55,8 @@ class ExperimentRunner():
         self.ae_model_class = ae_model_class
         self.limit_train_size = limit_train_size
         self.trail_label_idx = trail_label_idx
-        
+        self.full_video = full_video
+
         self.setup_environment()
         self.setup_torch()
 
@@ -137,18 +144,23 @@ class ExperimentRunner():
 
         self.global_iters = 0
 
+        #epochs now configurable through num_iterations as well (for variable batch_size grid search)
+        if self.epochs == None:
+            iterations_per_epoch = int(len(self.train_loader.dataset) / self.batch_size)
+            self.epochs = int(self.num_iterations/iterations_per_epoch)
         VIDEO_SIZE = 512
         with FFMPEG_VideoWriter('{}/{}.mp4'.format(self.viddir, self.prefix), (VIDEO_SIZE, VIDEO_SIZE), 3.0) as video:
             for self.epoch in range(self.epochs):
                 for batch_idx, (x, y, idx) in enumerate(self.train_loader, start=0):
                     print(self.epoch, batch_idx, self.global_iters, len(x), len(self.train_loader))
                     self.global_iters += 1
-                    batch = self.trainer.train_on_batch(x, idx, self.global_iters)                
-                    normalized_latents = self.normalize_latents(batch['video']['latents'])
-                    frame = visual.draw_points(normalized_latents, VIDEO_SIZE, batch['video']['labels'], self.nlabels)
+                    batch = self.trainer.train_on_batch(x, idx, self.global_iters)
                     
-                    video.write_frame(frame)
-
+                    if self.full_video or self.global_iters <= 1000 or self.global_iters % 1000 <= 100:
+                        normalized_latents = self.normalize_latents(batch['video']['latents'])
+                        frame = visual.draw_points(normalized_latents, VIDEO_SIZE, batch['video']['labels'], self.nlabels, int(self.global_iters / 1000))
+                        video.write_frame(frame)
+                    
                     if self.global_iters % self.log_interval == 0:                        
                         print("Global iter: {}, Train epoch: {}, batch: {}/{}, loss: {}".format(self.global_iters, self.epoch, batch_idx+1, len(self.train_loader), batch['loss']))
                         neptune.send_metric('train_loss', x=self.global_iters, y=batch['loss'])

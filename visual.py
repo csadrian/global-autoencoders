@@ -1,7 +1,7 @@
 import numpy as np
 import cv2
 
-def draw_points(p, w, labels, nlabels):
+def draw_points(p, w, labels, nlabels, monitoring_stage):#monitoring_stage is an int indicating which monitoring epoch we are in
     img = np.zeros((w, w, 3), np.uint8)
     assert len(p.shape) == 2 and p.shape[1] == 2, 'draw_points() expects 2-dim data'
     
@@ -29,7 +29,12 @@ def draw_points(p, w, labels, nlabels):
     #draw unit square for reference
     xt, yt = np.int32((np.array([-.98, -.98]) - limits) * scale)
     xb, yb  = np.int32((np.array([.98, .98]) - limits) * scale)
-    cv2.rectangle(img, (xt, yt), (xb, yb), (255, 255, 255), 3, cv2.LINE_AA)
+
+    
+    np.random.seed(monitoring_stage)
+    c = np.random.randint(255, size=3)
+    color = (int(c[0]), int(c[1]), int(c[2]))
+    cv2.rectangle(img, (xt, yt), (xb, yb), color, 3, cv2.LINE_AA)
     return img
 
 def draw_edges(p1, p2, w, radius, edges=True):
