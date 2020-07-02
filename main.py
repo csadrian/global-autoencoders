@@ -34,7 +34,7 @@ import math
 @gin.configurable('ExperimentRunner')
 class ExperimentRunner():
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=None, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, num_iterations= None,  prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0, full_video = False):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=None, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, num_iterations= None,  prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0, full_video = False, input_normalize_sym = False):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -56,7 +56,8 @@ class ExperimentRunner():
         self.limit_train_size = limit_train_size
         self.trail_label_idx = trail_label_idx
         self.full_video = full_video
-
+        self.input_normalize_sym = input_normalize_sym
+        
         self.setup_environment()
         self.setup_torch()
 
@@ -94,7 +95,7 @@ class ExperimentRunner():
             input_dims = (64, 64, 3)
             nc = 3
 
-        self.model = self.ae_model_class(nc=nc, input_dims=input_dims)
+        self.model = self.ae_model_class(nc=nc, input_dims=input_dims, input_normalize_sym=self.input_normalize_sym)
         self.model.to(self.device)
         self.distribution = self.model.distribution
 
@@ -113,7 +114,11 @@ class ExperimentRunner():
     def setup_data_loaders(self):
 
         if self.dataset == 'celeba':
-            transform = transforms.Compose([transforms.CenterCrop(140), transforms.Resize((64,64),PIL.Image.ANTIALIAS), transforms.ToTensor()])
+            transform_list = [transforms.CenterCrop(140), transforms.Resize((64,64),PIL.Image.ANTIALIAS), transforms.ToTensor()]
+            #if self.input_normalize_sym:
+                #D = 64*64*3
+                #transform_list.append(transforms.LinearTransformation(2*torch.eye(D), -.5*torch.ones(D)))
+            transform = transforms.Compose(transform_list)
             train_dataset = datasets.CelebA(self.datadir, split='train', target_type='attr', download=True, transform=transform)
             test_dataset = datasets.CelebA(self.datadir, split='test', target_type='attr', download=True, transform=transform)
             self.nlabels = 0
@@ -135,8 +140,8 @@ class ExperimentRunner():
         if self.limit_train_size is not None:
             train_dataset = torch.utils.data.random_split(train_dataset, [self.limit_train_size, len(train_dataset)-self.limit_train_size])[0]
 
-        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(train_dataset), batch_size=self.batch_size, shuffle=True, **self.dataloader_kwargs)
-        self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(test_dataset), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
+        self.train_loader = torch.utils.data.DataLoader(DatasetWithIndices(train_dataset, self.input_normalize_sym), batch_size=self.batch_size, shuffle=True, **self.dataloader_kwargs)
+        self.test_loader = torch.utils.data.DataLoader(DatasetWithIndices(test_dataset, self.input_normalize_sym), batch_size=self.batch_size, shuffle=False, **self.dataloader_kwargs)
 
     def train(self): 
         self.setup_data_loaders()

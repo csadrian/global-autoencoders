@@ -13,12 +13,14 @@ import gin.torch.external_configurables
 
 import synthetic
 
+import time
+
 @gin.configurable
 class SinkhornTrainer:
     def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, 
                     train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, 
                     reg_loss_type = 'sinkhorn', blur = None, trail_label_idx=0,
-                 full_backprop = False):
+                 full_backprop = False, rec_cost = 'mean'):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -36,6 +38,9 @@ class SinkhornTrainer:
         self.recalculate_freq = recalculate_freq
         self.trail_label_idx = trail_label_idx
         self.full_backprop = full_backprop
+
+        assert rec_cost in {'mean', 'sum', 'Tolstikhin', 'Tolstikhin2'}
+        self.rec_cost = rec_cost
         
         #In the local, no monitoring case, generate video and covered area from fixed batch.
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
@@ -149,7 +154,12 @@ class SinkhornTrainer:
         with torch.no_grad():
             x = x_test.to(self.device)
             recon_x, z = self.model(x)
-            rec_loss = F.mse_loss(recon_x,x)
+            if self.rec_cost == 'Tolstikhin':
+                rec_loss = 0.05 * F.mse_loss(recon_x,x, reduction='sum') / 100.
+            elif self.rec_cost == 'Tolstikhin2':
+                rec_loss = 0.05 * F.mse_loss(recon_x,x)
+            else:
+                rec_loss = F.mse_loss(recon_x,x, reduction=self.rec_cost)
             del x
             return {
                 'encode': z,
@@ -195,7 +205,12 @@ class SinkhornTrainer:
                 video_batch = self.model._encode(self.trail_batch)
                 video_labels = self.trail_labels
 
-        bce = F.mse_loss(recon_x, x)
+        if self.rec_cost == 'Tolstikhin':
+            bce = 0.05 * F.mse_loss(recon_x, x, reduction='sum') / 100.
+        elif self.rec_cost == 'Tolstikhin2':
+            bce = 0.05 * F.mse_loss(recon_x, x)    
+        else:
+            bce = F.mse_loss(recon_x, x, reduction=self.rec_cost)
         
         if self.reg_lambda != 0.0:
             if resample:
@@ -213,7 +228,7 @@ class SinkhornTrainer:
             loss = bce.clone()
             reg_loss = 0.0
 
-        return {
+        result = {
             'loss': loss,
             'reg_loss': reg_loss,
             'rec_loss': bce,
@@ -223,6 +238,7 @@ class SinkhornTrainer:
             'video': {'latents': video_batch, 'labels': video_labels},
             'blur' : self.blur
         }
+        return result
 
     def train_on_batch(self, x, curr_indices, iter):
 

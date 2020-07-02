@@ -33,7 +33,7 @@ class PadSame(nn.Module):
     def forward(self, x):
         return padding.pad_same(x, self.kernel_size, self.stride, self.dilation)
 
-@gin.configurable
+@gin.configurable(blacklist=["input_normalize_sym"])
 class WAE(nn.Module):
     """Encoder-Decoder architecture for both WAE-MMD and WAE-GAN."""
     def __init__(self, z_dim=64, nc=3, distribution = 'sphere', input_normalize_sym=False):
@@ -99,12 +99,12 @@ class WAE(nn.Module):
             return F.sigmoid(xd)
 
 
-@gin.configurable
+@gin.configurable(blacklist=["input_normalize_sym"])
 class DcganModel(nn.Module):
     """DCGAN style Encoder-Decoder architecture."""
     def __init__(self, z_dim=10, nc=3, input_dims=(32, 32, 3),
             distribution=gin.REQUIRED,
-            input_normalize_sym=gin.REQUIRED,
+            input_normalize_sym=False,
             e_num_layers=gin.REQUIRED,
             g_num_layers=gin.REQUIRED,
             e_num_filters=gin.REQUIRED,
@@ -281,12 +281,12 @@ class DcganModel(nn.Module):
             return F.sigmoid(xd)
 
 
-@gin.configurable
+@gin.configurable(blacklist=["input_normalize_sym"])
 class MlpModel(nn.Module):
     """Encoder-Decoder architecture for MNIST-like datasets."""
     def __init__(self, z_dim=10, nc=1, input_dims=(28, 28, 1),
                  distribution=gin.REQUIRED,
-                 input_normalize_sym=gin.REQUIRED,
+                 input_normalize_sym=False,
                  e_num_layers=gin.REQUIRED,
                  g_num_layers=gin.REQUIRED,
                  e_num_filters=gin.REQUIRED,
@@ -385,7 +385,7 @@ class MlpModel(nn.Module):
             return F.sigmoid(xd)
 
 
-@gin.configurable
+@gin.configurable(blacklist=["input_normalize_sym"])
 class MnistModel(nn.Module):
     """Encoder-Decoder architecture for MINST-like datasets."""
     def __init__(self, z_dim=10, nc=1, input_size=(28,28,1), distribution = gin.REQUIRED, input_normalize_sym=False):
