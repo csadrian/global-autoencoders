@@ -2,8 +2,8 @@ import torchvision.utils as vutils
 import neptune
 import matplotlib.pyplot as plt
 
-def save_image(x, name, it, filename, normalize=True):
-    vutils.save_image(x, filename, normalize=normalize)
+def save_image(x, name, it, filename, normalize=True, x_range=(0., 1.)):
+    vutils.save_image(x, filename, normalize=normalize, range=x_range)
     neptune.send_image(name, x=it, y=filename)
 
 def save_scatter(x, y, filedir, name, it, other_extensions = ['pdf']):

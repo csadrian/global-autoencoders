@@ -206,10 +206,18 @@ class ExperimentRunner():
         neptune.send_image('plot_latent_2d', x=self.global_iters, y=filename)
 
     def plot_images(self, x, train_rec, test_rec, gen):
-        utils.save_image(x, 'test_samples', self.global_iters, '{}/test_samples_epoch_{}.png'.format(self.imagesdir, self.epoch + 1))
-        utils.save_image(train_rec.detach(), 'train_reconstructions', self.global_iters, '{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
-        utils.save_image(test_rec.detach(), 'test_reconstructions', self.global_iters, '{}/test_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
-        utils.save_image(gen.detach(), 'generated', self.global_iters, '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True)
+        with torch.no_grad():
+            plot_x, plot_train, plot_test, plot_gen = x, train_rec, test_rec, gen
+
+            if self.input_normalize_sym:
+                x_range = (-1., 1.)
+            else:
+                x_range = (0., 1.)
+                
+            utils.save_image(plot_x, 'test_samples', self.global_iters, '{}/test_samples_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), x_range = x_range)
+            utils.save_image(plot_train, 'train_reconstructions', self.global_iters, '{}/train_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True, x_range = x_range)
+            utils.save_image(plot_test, 'test_reconstructions', self.global_iters, '{}/test_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True, x_range = x_range)
+            utils.save_image(plot_gen, 'generated', self.global_iters, '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True, x_range = x_range)
 
     def plot_flowers(self):
         reconstruction = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
