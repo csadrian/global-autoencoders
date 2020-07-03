@@ -1,0 +1,33 @@
+ExperimentRunner.dataset = 'celeba'
+ExperimentRunner.limit_train_size = 60000
+ExperimentRunner.ae_model_class = @models.DcganModel
+ExperimentRunner.batch_size = 100
+ExperimentRunner.epochs = 200
+ExperimentRunner.input_normalize_sym=True
+
+models.DcganModel.z_dim=64
+models.DcganModel.distribution='sphere'
+models.DcganModel.batch_norm=True
+models.DcganModel.dcgan_mod=True
+models.DcganModel.filter_size=5
+
+models.DcganModel.e_num_layers=4
+models.DcganModel.e_num_filters=1024
+models.DcganModel.g_num_layers=4
+models.DcganModel.g_num_filters=1024
+
+SinkhornTrainer.optimizer = @torch.optim.Adam
+torch.optim.Adam.lr=0.0005
+torch.optim.Adam.betas=(0.5, 0.999)
+
+SinkhornTrainer.rec_cost = 'Tolstikhin'
+SinkhornTrainer.reg_loss_type = 'sinkhorn'
+SinkhornTrainer.resampling_freq = 1
+SinkhornTrainer.recalculate_freq = 1
+SinkhornTrainer.reg_lambda = [0.0001, 0.001, 0.01, 0.1, 1.0, 10.0, 100.0, 1000.0]
+SinkhornTrainer.trainer_type = ['local', 'global']
+SinkhornTrainer.monitoring = False
+SinkhornTrainer.sinkhorn_scaling = 0.7
+
+descartes_builder.name = 'celeba_dcgan_limited'
+descartes_builder.params = ['SinkhornTrainer.reg_lambda', 'SinkhornTrainer.trainer_type']
