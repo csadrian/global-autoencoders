@@ -34,6 +34,7 @@ import math
 @gin.configurable('ExperimentRunner')
 class ExperimentRunner():
 
+
     def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=None, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, num_iterations= None,  prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0, full_video = False, input_normalize_sym = False):
         self.seed = seed
         self.no_cuda = no_cuda
@@ -85,7 +86,7 @@ class ExperimentRunner():
         if self.dataset in ('mnist'):
             input_dims = (28, 28, 1)
             nc = 1
-        elif self.dataset in ('flower'):
+        elif self.dataset in ('flower', 'snail', 'circle', 'disc'):
             input_dims = (2,)
             nc = 1
         elif self.dataset in ('square'):
@@ -134,6 +135,18 @@ class ExperimentRunner():
             train_dataset = synthetic.SquareGrid(train = True)
             test_dataset = synthetic.SquareGrid(train = False)
             self.nlabels = 0            
+        elif self.dataset == 'snail':
+            train_dataset = synthetic.Snail(train = True)
+            test_dataset = synthetic.Snail(train = False)
+            self.nlabels = 0
+        elif self.dataset == 'circle':
+            train_dataset = synthetic.Circle(train = True)
+            test_dataset = synthetic.Circle(train = False)
+            self.nlabels = 0
+        elif self.dataset == 'disc':
+            train_dataset = synthetic.Disc(train = True)
+            test_dataset = synthetic.Disc(train = False)
+            self.nlabels = 0
         else:
             raise Exception("Dataset not found: " + dataset)
 
@@ -194,9 +207,12 @@ class ExperimentRunner():
             test_encode = test_encode * 2 - 1.
         # save encoded samples plot
         plt.figure(figsize=(10, 10))
+        #colordict = {0 : 'black', 1 : 'brown', 2 : 'b', 3 : 'cyan', 4 : 'g', 5 : 'lime', 6 : 'm', 7 : 'r', 8 : 'orange', 9 : 'y'}
+        #for k in range(len(test_encode)):
+        #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
-        plt.xlim([-1.5, 1.5])
-        plt.ylim([-1.5, 1.5])
+        plt.xlim([-4, 4])
+        plt.ylim([-4, 4])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
@@ -219,7 +235,7 @@ class ExperimentRunner():
             utils.save_image(plot_test, 'test_reconstructions', self.global_iters, '{}/test_reconstructions_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True, x_range = x_range)
             utils.save_image(plot_gen, 'generated', self.global_iters, '{}/generated_epoch_{}.png'.format(self.imagesdir, self.epoch + 1), normalize=True, x_range = x_range)
 
-    def plot_flowers(self):
+    def plot_syn(self):
         reconstruction = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
         generated = torch.zeros(torch.Size([len(self.train_loader.dataset),2])).to(self.device).detach()
         
@@ -272,8 +288,8 @@ class ExperimentRunner():
             
         self.plot_latent_2d(test_encode, test_targets, test_loss)
         
-        if self.dataset == 'flower' or self.dataset == 'square':
-            self.plot_flowers()
+        if self.dataset in ('flower', 'square', 'disc', 'circle', 'snail'):
+            self.plot_syn()
         else:
             with torch.no_grad():
                 _, (x, _, _) = enumerate(self.test_loader, start=0).__next__()

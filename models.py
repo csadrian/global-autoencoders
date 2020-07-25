@@ -388,7 +388,7 @@ class MlpModel(nn.Module):
 @gin.configurable(blacklist=["input_normalize_sym"])
 class MnistModel(nn.Module):
     """Encoder-Decoder architecture for MINST-like datasets."""
-    def __init__(self, z_dim=10, nc=1, input_size=(28,28,1), distribution = gin.REQUIRED, input_normalize_sym=False):
+    def __init__(self, z_dim=10, nc=1, input_dims=(28,28,1), distribution = gin.REQUIRED, input_normalize_sym=False):
         super(MnistModel, self).__init__()
         self.z_dim = z_dim
         self.nc = nc

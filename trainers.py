@@ -104,7 +104,17 @@ class SinkhornTrainer:
         elif self.distribution == 'flower':
             seed = np.random.randint(0, 10000)
             #ONLY 2-dim
-            sample, _ = synthetic.flower(n, 6, .5, .2, seed)#30, .5, .03, seed)
+            sample, _ = synthetic.flower(n, 10, .5, .2, seed)#30, .5, .03, seed)
+            return sample
+        elif self.distribution == 'snail':
+            seed = np.random.randint(0, 10000)
+            #ONLY 2-dim
+            sample = synthetic.snail(n, 2, .5, 2, seed)
+            return sample
+        elif self.distribution == 'gaussflower':
+            seed = np.random.randint(0, 10000)
+            #ONLY 2-dim
+            sample = synthetic.gaussflower(n, 10, seed)
             return sample
         elif self.distribution == 'uniform':
             base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
@@ -115,8 +125,8 @@ class SinkhornTrainer:
 
         if self.distribution == 'sphere':
             s = dist.sample(torch.Size([n]))
-            n = torch.norm(s, p=2, dim=1)[:, np.newaxis]
-            return s / n
+            norm = torch.norm(s, p=2, dim=1)[:, np.newaxis]
+            return s / norm
         else:
             sample = dist.sample(torch.Size([n]))
             return sample
@@ -264,4 +274,3 @@ class SinkhornTrainer:
                     x = x.to(self.device)
                     self.x_latents[idx] = self.model._encode(x)
                     del x
- 
