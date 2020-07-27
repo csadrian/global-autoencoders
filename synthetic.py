@@ -63,14 +63,14 @@ class Flower(torch.utils.data.Dataset):
         return self.data[idx,:], self.labels[idx]
 
 @gin.configurable('GaussFlower')
-class Flower(torch.utils.data.Dataset):
+class GaussFlower(torch.utils.data.Dataset):
     def __init__(self, train, n_points=50000,
                  petals=10, seed = 0):
         self.petals = petals
         if train == True:
-            self.data = flower(n_points, petals, seed)
+            self.data = gaussflower(n_points, petals, seed)
         else:
-            self.data = flower(int(n_points/4), petals, seed+1)
+            self.data = gaussflower(int(n_points/4), petals, seed+1)
         #self.labels = torch.full((len(self.data),), 0, dtype=torch.int)
             
 
