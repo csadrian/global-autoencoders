@@ -211,8 +211,8 @@ class ExperimentRunner():
         #for k in range(len(test_encode)):
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
-        plt.xlim([-4, 4])
-        plt.ylim([-4, 4])
+        plt.xlim([-1.5, 1.5])
+        plt.ylim([-1.5, 1.5])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
