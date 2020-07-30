@@ -1,19 +1,19 @@
-ExperimentRunner.dataset = 'mnist'
+ExperimentRunner.dataset = 'disc'
 ExperimentRunner.ae_model_class = @models.MlpModel
 ExperimentRunner.batch_size = 100
 ExperimentRunner.epochs = 30
 
-models.MlpModel.z_dim=4
-models.MlpModel.distribution='normal'
+models.MlpModel.z_dim=2
+models.MlpModel.distribution='uniform'
 models.MlpModel.input_normalize_sym=False
-models.MlpModel.batch_norm=True
+models.MlpModel.batch_norm=False
 
 models.MlpModel.e_num_layers=3
 models.MlpModel.e_num_filters=256
 models.MlpModel.g_num_layers=3
 models.MlpModel.g_num_filters=256
 
-SinkhornTrainer.reg_loss_type = 'IMQ'
+SinkhornTrainer.reg_loss_type = 'sinkhorn'
 SinkhornTrainer.optimizer = @torch.optim.Adam
 torch.optim.Adam.lr=0.001
 torch.optim.Adam.betas=(0.5, 0.999)

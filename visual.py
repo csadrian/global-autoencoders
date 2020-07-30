@@ -71,7 +71,6 @@ def covered_area(zs):#, resolution=400, radius=10):
     for z in zs:
         zr = (resolution * (z + 1) / 2).astype(int)
         x, y = zr
-        #m[max((x-r, 0)):min((x+r, resolution)), max((y-r, 0)):min((y+r, resolution))] += 1
-        m[max((x-r, 0)):min((x+r, resolution)), max((y-r, 0)):min((y+r, resolution))] = 1
-    return np.mean((m > 0).astype(np.float32))
-
+        if x > 0 and y > 0:
+            m[max((x-r, 0)):min((x+r, resolution)), max((y-r, 0)):min((y+r, resolution))] = 1
+    return np.mean(m.astype(np.float32))
