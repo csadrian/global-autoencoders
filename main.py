@@ -2,6 +2,8 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
+from sklearn.neighbors import NearestNeighbors
+
 import os, sys
 
 import torch
@@ -211,8 +213,8 @@ class ExperimentRunner():
         #for k in range(len(test_encode)):
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
-        plt.xlim([-1.5, 1.5])
-        plt.ylim([-1.5, 1.5])
+        plt.xlim([-5, 5])
+        plt.ylim([-5, 5])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
@@ -278,11 +280,25 @@ class ExperimentRunner():
             test_loss = test_rec_loss + self.trainer.reg_lambda * test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
 
+        neigh = NearestNeighbors(n_neighbors = 10)
+        neigh.fit(test_encode)
+        num_good_points = 0
+        for k in range(len(test_encode)):
+            nbrs = neigh.kneighbors(test_encode[k].reshape(1, -1), 10, return_distance = False)
+            labels = list(test_targets[nbrs[0]])
+            labels = set(labels)
+            if len(labels) == 1:
+                num_good_points += 1
+        ratio = num_good_points / len(test_encode)
+        #with open('ratio_{}_{}.txt'.format(self.trainer.trainer_type, self.trainer.reg_lambda), 'a') as file:
+        #    file.write(str(ratio) + '\n')
+
         print('Test Epoch: {} ({:.2f}%)\tLoss: {:.6f}'.format(self.epoch + 1, float(self.epoch + 1) / (self.epochs) * 100., test_loss))
         neptune.send_metric('test_loss', x=self.global_iters, y=test_loss)
         neptune.send_metric('test_reg_loss', x=self.global_iters, y=test_reg_loss)
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         neptune.send_metric('test_covered_area', x=self.global_iters, y=covered)
+        neptune.send_metric('ratio_good_nn', x=self.global_iters, y=ratio)
         if len(test_targets.shape) == 2:
             test_targets = test_targets[:,self.trail_label_idx]
             
