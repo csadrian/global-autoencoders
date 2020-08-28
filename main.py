@@ -1,3 +1,5 @@
+import numpy as np
+
 import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
@@ -31,7 +33,12 @@ from datasets import DatasetWithIndices
 
 from moviepy.video.io.ffmpeg_writer import FFMPEG_VideoWriter
 from scipy.stats import norm
+from scipy.stats import multivariate_normal
 import math
+
+import networkx as nx
+from networkx.algorithms import bipartite
+from networkx.algorithms.matching import max_weight_matching
 
 @gin.configurable('ExperimentRunner')
 class ExperimentRunner():
@@ -113,6 +120,36 @@ class ExperimentRunner():
         if self.distribution == 'sphere':    
             latents = norm.cdf(latents * math.sqrt(self.model.z_dim)) * 2 - 1
         return latents[:, :2]
+
+    def split_to_petals(self, z):
+        latents = z
+        latents = latents.cpu()
+        latents = latents.detach().numpy()
+        points_as_petals = [[] for i in range(10)]
+        indices = [[] for i in range(10)]
+        for i in range(len(latents)):
+            c = complex(latents[i][0], latents[i][1])
+            angle = np.angle(c)
+            if angle < 0:
+                angle += 2 * math.pi
+            idx = int((int(angle * 10 / math.pi) + 1) / 2) % 10
+            points_as_petals[idx].append(latents[i])
+            indices[idx].append(i)
+        return points_as_petals, indices
+    
+    def gaussflower_covered(self, z):
+        points_as_petals, _ = self.split_to_petals(z)
+        av = 0
+        for j in range(10):
+            points = np.asarray(points_as_petals[j])
+            points = synthetic.rotate2d(- (2 * math.pi / 10) * j, points)
+            #points = multivariate_normal.cdf(points, mean = [3, 0], cov = [[1, 0], [0, 1 / 100]])
+            M = np.array([[1, 0], [0, 10]])
+            v = np.array([3, 0])
+            points = np.matmul(points, M) - v
+            points = norm.cdf(points) * 2 - 1
+            av += visual.covered_area(points)
+        return av / 10
 
     def setup_data_loaders(self):
 
@@ -213,8 +250,8 @@ class ExperimentRunner():
         #for k in range(len(test_encode)):
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
-        plt.xlim([-5, 5])
-        plt.ylim([-5, 5])
+        plt.xlim([-6, 6])
+        plt.ylim([-6, 6])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
@@ -274,22 +311,47 @@ class ExperimentRunner():
                 test_targets.append(y_test)
             
             normalized_latents = self.normalize_latents(full_test_encode)
-            covered = visual.covered_area(normalized_latents)
+            if self.distribution == 'gaussflower':
+                covered = self.gaussflower_covered(full_test_encode)
+            else:
+                covered = visual.covered_area(normalized_latents)
             test_rec_loss /= len(self.test_loader)
             test_reg_loss = self.trainer.reg_loss_on_test().item()
             test_loss = test_rec_loss + self.trainer.reg_lambda * test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
 
-        neigh = NearestNeighbors(n_neighbors = 10)
-        neigh.fit(test_encode)
-        num_good_points = 0
-        for k in range(len(test_encode)):
-            nbrs = neigh.kneighbors(test_encode[k].reshape(1, -1), 10, return_distance = False)
-            labels = list(test_targets[nbrs[0]])
-            labels = set(labels)
-            if len(labels) == 1:
-                num_good_points += 1
-        ratio = num_good_points / len(test_encode)
+
+        if self.distribution == 'gaussflower':
+            _, indices = self.split_to_petals(full_test_encode)
+            labels_as_petals = np.zeros((10, 10))
+            for i in range(10):
+                for idx in indices[i]:
+                    labels_as_petals[i][test_targets[idx]] += 1
+            p = [i for i in range(10)]
+            l = [j + 10 for j in range(10)]
+            weighted_edges = [(i, j + 10, labels_as_petals[i][j]) for i in range(10) for j in range(10)]            
+            B = nx.Graph()
+            B.add_nodes_from(p, bipartite = 0)
+            B.add_nodes_from(l, bipartite = 1)
+            B.add_weighted_edges_from(weighted_edges)
+            pairing = list(max_weight_matching(B, maxcardinality = True))
+            pair_weight = 0
+            for i in range(len(pairing)):
+                if pairing[i][0] > pairing[i][1]:
+                    pair_weight += labels_as_petals[pairing[i][1]][pairing[i][0] - 10]
+                else:
+                    pair_weight += labels_as_petals[pairing[i][0]][pairing[i][1] - 10]
+
+            neigh = NearestNeighbors(n_neighbors = 10)
+            neigh.fit(test_encode)
+            num_good_points = 0
+            for k in range(len(test_encode)):
+                nbrs = neigh.kneighbors(test_encode[k].reshape(1, -1), 10, return_distance = False)
+                labels = list(test_targets[nbrs[0]])
+                labels = set(labels)
+                if len(labels) == 1:
+                    num_good_points += 1
+            ratio = num_good_points / len(test_encode)
         #with open('ratio_{}_{}.txt'.format(self.trainer.trainer_type, self.trainer.reg_lambda), 'a') as file:
         #    file.write(str(ratio) + '\n')
 
@@ -298,7 +360,9 @@ class ExperimentRunner():
         neptune.send_metric('test_reg_loss', x=self.global_iters, y=test_reg_loss)
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         neptune.send_metric('test_covered_area', x=self.global_iters, y=covered)
-        neptune.send_metric('ratio_good_nn', x=self.global_iters, y=ratio)
+        if self.distribution == 'gaussflower':
+            neptune.send_metric('ratio_good_nn', x=self.global_iters, y=ratio)
+            neptune.send_metric('cluster_matching', x=self.global_iters, y=pair_weight)
         if len(test_targets.shape) == 2:
             test_targets = test_targets[:,self.trail_label_idx]
             
