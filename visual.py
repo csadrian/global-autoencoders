@@ -74,3 +74,18 @@ def covered_area(zs):#, resolution=400, radius=10):
         if x > 0 and y > 0:
             m[max((x-r, 0)):min((x+r, resolution)), max((y-r, 0)):min((y+r, resolution))] = 1
     return np.mean(m.astype(np.float32))
+
+def covered_neighborhood(zs, nat):
+    assert len(zs.shape) == 2
+    r  = 0.025
+    num = zs.shape[0]
+    close = 0
+    for z in zs:
+        dist = np.linalg.norm(nat - z, ord = 2, axis = 1)
+        dist = dist[(dist < r)]
+        if len(dist) > 0:
+            close += 1
+    ratio = close / num
+    return ratio
+        
+        

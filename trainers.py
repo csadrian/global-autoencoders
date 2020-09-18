@@ -109,12 +109,17 @@ class SinkhornTrainer:
         elif self.distribution == 'snail':
             seed = np.random.randint(0, 10000)
             #ONLY 2-dim
-            sample = synthetic.snail(n, 2, .5, 2, seed)
+            sample = synthetic.snail(n, 2.5, 1, 2, seed)
             return sample
         elif self.distribution == 'gaussflower':
             seed = np.random.randint(0, 10000)
             #ONLY 2-dim
             sample = synthetic.gaussflower(n, 10, seed)
+            return sample
+        elif self.distribution == 'gaussimplex':
+            seed = np.random.randint(0, 10000)
+            #ONLY 2-dim
+            sample = synthetic.gaussimplex(n, 10, seed)
             return sample
         elif self.distribution == 'uniform':
             base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))

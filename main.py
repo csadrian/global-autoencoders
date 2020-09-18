@@ -92,7 +92,7 @@ class ExperimentRunner():
         print(self.device)
 
     def setup_trainers(self):
-        if self.dataset in ('mnist'):
+        if self.dataset in ('mnist', 'fashionmnist', 'kmnist'):
             input_dims = (28, 28, 1)
             nc = 1
         elif self.dataset in ('flower', 'snail', 'circle', 'disc'):
@@ -136,6 +136,20 @@ class ExperimentRunner():
             points_as_petals[idx].append(latents[i])
             indices[idx].append(i)
         return points_as_petals, indices
+
+    def split_to_vertex(self, z):
+        latents = z
+        latents = latents.cpu()
+        latents = latents.detach().numpy()
+        points_as_vertex = [[] for i in range(10)]
+        indices = [[] for i in range(10)]
+        M = np.identity(10)
+        for i in range(len(latents)):
+            v = latents[i] - M
+            idx = np.argmin(np.linalg.norm(v, axis = 1))
+            points_as_vertex[idx].append(latents[i])
+            indices[idx].append(i)
+        return points_as_vertex, indices
     
     def gaussflower_covered(self, z):
         points_as_petals, _ = self.split_to_petals(z)
@@ -149,6 +163,19 @@ class ExperimentRunner():
             points = np.matmul(points, M) - v
             points = norm.cdf(points) * 2 - 1
             av += visual.covered_area(points)
+        return av / 10
+
+    def gaussimplex_covered(self, z):
+        points_as_vertex, _ = self.split_to_vertex(z)
+        av = 0
+        for j in range(10):
+            points = np.asarray(points_as_vertex[j])
+            M = np.identity(10) * math.sqrt(20)
+            v = np.zeros(10)
+            v[j] = math.sqrt(20)
+            points = np.matmul(points, M) - v
+            points = norm.cdf(points) * 2 - 1
+            av += visual.covered_area(points[:,:2])
         return av / 10
 
     def setup_data_loaders(self):
@@ -165,6 +192,14 @@ class ExperimentRunner():
         elif self.dataset == 'mnist':
             train_dataset = datasets.MNIST(self.datadir, train=True, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
             test_dataset = datasets.MNIST(self.datadir, train=False, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+            self.nlabels = 10
+        elif self.dataset == 'fashionmnist':
+            train_dataset = datasets.FashionMNIST(self.datadir, train=True, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+            test_dataset = datasets.FashionMNIST(self.datadir, train=False, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+            self.nlabels = 10
+        elif self.dataset == 'kmnist':
+            train_dataset = datasets.KMNIST(self.datadir, train=True, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
+            test_dataset = datasets.KMNIST(self.datadir, train=False, target_transform=None, download=True, transform=transforms.Compose([transforms.ToTensor()]))
             self.nlabels = 10
         elif self.dataset == 'flower':
             train_dataset = synthetic.Flower(train = True)
@@ -250,8 +285,9 @@ class ExperimentRunner():
         #for k in range(len(test_encode)):
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
-        plt.xlim([-6, 6])
-        plt.ylim([-6, 6])
+        #plt.colorbar()
+        plt.xlim([-1, 2])
+        plt.ylim([-1, 2])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
@@ -313,13 +349,14 @@ class ExperimentRunner():
             normalized_latents = self.normalize_latents(full_test_encode)
             if self.distribution == 'gaussflower':
                 covered = self.gaussflower_covered(full_test_encode)
+            elif self.distribution == 'gaussimplex':
+                covered = self.gaussimplex_covered(full_test_encode)
             else:
                 covered = visual.covered_area(normalized_latents)
             test_rec_loss /= len(self.test_loader)
             test_reg_loss = self.trainer.reg_loss_on_test().item()
             test_loss = test_rec_loss + self.trainer.reg_lambda * test_reg_loss
         test_encode, test_targets = torch.cat(test_encode).cpu().numpy(), torch.cat(test_targets).cpu().numpy()
-
 
         if self.distribution == 'gaussflower':
             _, indices = self.split_to_petals(full_test_encode)
@@ -342,16 +379,42 @@ class ExperimentRunner():
                 else:
                     pair_weight += labels_as_petals[pairing[i][0]][pairing[i][1] - 10]
 
-            neigh = NearestNeighbors(n_neighbors = 10)
-            neigh.fit(test_encode)
-            num_good_points = 0
-            for k in range(len(test_encode)):
-                nbrs = neigh.kneighbors(test_encode[k].reshape(1, -1), 10, return_distance = False)
-                labels = list(test_targets[nbrs[0]])
-                labels = set(labels)
-                if len(labels) == 1:
-                    num_good_points += 1
-            ratio = num_good_points / len(test_encode)
+        if self.distribution == 'gaussimplex':
+            _, indices = self.split_to_vertex(full_test_encode)
+            labels_as_vertex = np.zeros((10, 10))
+            for i in range(10):
+                for idx in indices[i]:
+                    labels_as_vertex[i][test_targets[idx]] += 1
+            p = [i for i in range(10)]
+            l = [j + 10 for j in range(10)]
+            weighted_edges = [(i, j + 10, labels_as_vertex[i][j]) for i in range(10) for j in range(10)]            
+            B = nx.Graph()
+            B.add_nodes_from(p, bipartite = 0)
+            B.add_nodes_from(l, bipartite = 1)
+            B.add_weighted_edges_from(weighted_edges)
+            pairing = list(max_weight_matching(B, maxcardinality = True))
+            pair_weight = 0
+            for i in range(len(pairing)):
+                if pairing[i][0] > pairing[i][1]:
+                    pair_weight += labels_as_vertex[pairing[i][1]][pairing[i][0] - 10]
+                else:
+                    pair_weight += labels_as_vertex[pairing[i][0]][pairing[i][1] - 10]
+                    
+        neigh = NearestNeighbors(n_neighbors = 10)
+        neigh.fit(test_encode)
+        num_good_points = 0
+        for k in range(len(test_encode)):
+            nbrs = neigh.kneighbors(test_encode[k].reshape(1, -1), 10, return_distance = False)
+            labels = list(test_targets[nbrs[0]])
+            labels = set(labels)
+            if len(labels) == 1:
+                num_good_points += 1
+        ratio = num_good_points / len(test_encode)
+
+            #nat = self.trainer.sample_pz(len(self.train_loader.dataset)).to(self.device)
+            #nat = nat.cpu().detach().numpy()
+            #ratio_neighbor = visual.covered_neighborhood(test_encode, nat)
+
         #with open('ratio_{}_{}.txt'.format(self.trainer.trainer_type, self.trainer.reg_lambda), 'a') as file:
         #    file.write(str(ratio) + '\n')
 
@@ -360,9 +423,10 @@ class ExperimentRunner():
         neptune.send_metric('test_reg_loss', x=self.global_iters, y=test_reg_loss)
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         neptune.send_metric('test_covered_area', x=self.global_iters, y=covered)
-        if self.distribution == 'gaussflower':
-            neptune.send_metric('ratio_good_nn', x=self.global_iters, y=ratio)
+        neptune.send_metric('ratio_good_nn', x=self.global_iters, y=ratio)
+        if self.distribution in ('gaussflower', 'gaussimplex'):
             neptune.send_metric('cluster_matching', x=self.global_iters, y=pair_weight)
+            #neptune.send_metric('test_covered_neighbor', x=self.global_iters, y=ratio_neighbor)
         if len(test_targets.shape) == 2:
             test_targets = test_targets[:,self.trail_label_idx]
             

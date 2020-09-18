@@ -88,9 +88,9 @@ class Snail(torch.utils.data.Dataset):
     def __init__(self, train, n_points=50000,
                  bend = 2, width=.05, dim = 2, seed = 0):
         if train == True:
-            self.data = snail(n_points, bend, width, seed)
+            self.data = snail(n_points, bend, width, dim, seed)
         else:
-            self.data = snail(int(n_points/4), bend, width, seed+1)
+            self.data = snail(int(n_points/4), bend, width, dim, seed+1)
         self.labels = torch.full((len(self.data),), 0, dtype=torch.int)
             
 
@@ -187,12 +187,27 @@ def gaussflower(n_points, petals, seed = 0):
     gausspoints = np.vstack(gausspoints)
     return torch.tensor(gausspoints, dtype = torch.float)
 
+def gaussimplex(n_points, dim, seed = 0):
+    random.seed(seed)
+    n_points = n_points - n_points % dim
+    single_num = int(n_points / dim)
+    simplexpoints = []
+    mean = np.zeros(dim)
+    cov = np.identity(dim) * 0.05
+    for i in range(dim):
+        v = np.zeros(dim)
+        v[i] = 1
+        points = np.random.multivariate_normal(mean, cov, single_num) + v
+        simplexpoints.append(points)
+    simplexpoints = np.vstack(simplexpoints)
+    return torch.tensor(simplexpoints, dtype = torch.float)
+
 def snail(n_points, bend, width, dim, seed = 0):
     random.seed(seed)
     snailpoints = np.zeros([n_points, dim])
     for k in range(n_points):
         angle = bend * 2 * math.pi * k / n_points
-        radius = (n_points - k) / n_points
+        radius = ((n_points - k) / n_points) * 10
         angle_sway = random.random()
         radius_sway = width * random.random()
         center = np.random.uniform(-1, 1, dim)
@@ -240,6 +255,14 @@ def disc(n_points, width, seed = 0):
 #plt.scatter(flowerpoints[:,0], flowerpoints[:,1])
 #plt.savefig("flowerpoints.png")
 
-gausspoints = gaussflower(10000, 10)
-plt.scatter(gausspoints[:,0], gausspoints[:,1])
-plt.savefig("gausspoints.png")
+#gausspoints = gaussflower(10000, 10)
+#plt.scatter(gausspoints[:,0], gausspoints[:,1])
+#plt.savefig("gausspoints.png")
+
+#snailpoints = snail(10000, 2, 1)
+#plt.scatter(snailpoints[:,0], snailpoints[:,1])
+#plt.savefig("snailpoints.png")
+
+simplexpoints = gaussimplex(10000, 2)
+plt.scatter(simplexpoints[:,0], simplexpoints[:,1])
+plt.savefig("simplexpoints.png")
