@@ -442,6 +442,71 @@ class MnistModel(nn.Module):
         else:
             return F.sigmoid(xd)
 
+@gin.configurable(blacklist=["input_normalize_sym"])
+class LeNet(nn.Module):
+    """Encoder-Decoder architecture for LeNet."""
+    def __init__(self, z_dim=10, nc=1, input_dims=(28,28,1), distribution = gin.REQUIRED, input_normalize_sym=False):
+        super(LeNet, self).__init__()
+        self.z_dim = z_dim
+        self.nc = nc
+        self.distribution = distribution
+        self.input_normalize_sym = input_normalize_sym
+        self.encoder = nn.Sequential(
+            nn.Conv2d(nc, 6, 5, padding = 2),               
+            nn.ReLU(True),
+            nn.MaxPool2d(2),
+            nn.Conv2d(6, 16, 5),             
+            nn.ReLU(True),
+            nn.MaxPool2d(2),
+            View((-1, 16*5*5)),                               
+            nn.Linear(16*5*5, 120),
+            nn.ReLU(True),
+            nn.Linear(120, 84),
+            nn.ReLU(True),
+            nn.Linear(84, z_dim)                         
+        )
+        self.decoder = nn.Sequential(
+            nn.Linear(z_dim, 84),                        
+            nn.ReLU(True),
+            nn.Linear(84, 120),
+            nn.ReLU(True),
+            nn.Linear(120, 16*5*5),
+            nn.ReLU(True),
+            View((-1, 16, 5, 5)),                       
+            nn.Upsample(scale_factor = 2, mode = 'nearest'),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(16, 6, 5),   
+            nn.Upsample(scale_factor = 2, mode = 'nearest'),
+            nn.ReLU(True),
+            nn.ConvTranspose2d(6, nc, 5, padding = 2),
+        )                
+        self.weight_init()
+
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+
+    def forward(self, x):
+        z = self._encode(x)
+        x_recon = self._decode(z)
+
+        return x_recon, z
+
+    def _encode(self, x):
+        #distribution = gin.REQUIRED
+        if self.distribution == "sphere":
+            return F.normalize(self.encoder(x), dim=1, p=2)
+        else:
+            return self.encoder(x)
+
+    def _decode(self, z):
+        xd = self.decoder(z)
+        if self.input_normalize_sym:
+            return F.tanh(xd)
+        else:
+            return F.sigmoid(xd)
+
 
 class Adversary(nn.Module):
     """Adversary architecture(Discriminator) for WAE-GAN."""

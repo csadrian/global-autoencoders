@@ -7,6 +7,7 @@ import matplotlib.pyplot as plt
 from sklearn.neighbors import NearestNeighbors
 
 import os, sys
+import gc
 
 import torch
 import torch.optim
@@ -247,6 +248,19 @@ class ExperimentRunner():
                     print(self.epoch, batch_idx, self.global_iters, len(x), len(self.train_loader))
                     self.global_iters += 1
                     batch = self.trainer.train_on_batch(x, idx, self.global_iters)
+
+                    """
+                    totalmem = 0
+                    for obj in gc.get_objects():
+                        try:
+                            if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                                mem = obj.nelement() * obj.element_size() / 1024 / 1024
+                                totalmem += mem
+                                print(type(obj), obj.size(), mem)
+                        except:
+                            pass
+                    print(totalmem)
+                    """
                     
                     if self.full_video or self.global_iters <= 1000 or self.global_iters % 1000 <= 100:
                         normalized_latents = self.normalize_latents(batch['video']['latents'])
@@ -286,8 +300,8 @@ class ExperimentRunner():
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
         #plt.colorbar()
-        plt.xlim([-1, 2])
-        plt.ylim([-1, 2])
+        plt.xlim([-1.5, 1.5])
+        plt.ylim([-1.5, 1.5])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
