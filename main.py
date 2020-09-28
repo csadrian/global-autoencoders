@@ -300,8 +300,12 @@ class ExperimentRunner():
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
         plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
         #plt.colorbar()
-        plt.xlim([-1.5, 1.5])
-        plt.ylim([-1.5, 1.5])
+        if self.trainer.distribution == 'gaussflower':
+            plt.xlim([-6, 6])
+            plt.ylim([-6, 6])
+        else:
+            plt.xlim([-1.5, 1.5])
+            plt.ylim([-1.5, 1.5])
         plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        

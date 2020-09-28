@@ -1,5 +1,7 @@
 import numpy as np
 
+import gc
+
 import torch
 import torch.nn.functional as F
 
@@ -20,7 +22,7 @@ class SinkhornTrainer:
     def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, 
                     train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, 
                     reg_loss_type = 'sinkhorn', blur = None, trail_label_idx=0,
-                 full_backprop = False, rec_cost = 'mean'):
+                 full_backprop = False, rec_cost = 'mean', simplex_var = 0.05):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -41,6 +43,8 @@ class SinkhornTrainer:
 
         assert rec_cost in {'mean', 'sum', 'Tolstikhin', 'Tolstikhin2'}
         self.rec_cost = rec_cost
+
+        self.simplex_var = simplex_var
         
         #In the local, no monitoring case, generate video and covered area from fixed batch.
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
@@ -119,7 +123,7 @@ class SinkhornTrainer:
         elif self.distribution == 'gaussimplex':
             seed = np.random.randint(0, 10000)
             #ONLY 2-dim
-            sample = synthetic.gaussimplex(n, 10, seed)
+            sample = synthetic.gaussimplex(n, 10, self.simplex_var, seed)
             return sample
         elif self.distribution == 'uniform':
             base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
@@ -212,6 +216,7 @@ class SinkhornTrainer:
             self.x_latents = self.x_latents.detach()
             if recalc_latents:
                 self.recalculate_latents()
+            #if not(recalc_latents and self.full_backprop):
             self.x_latents.index_copy_(0, curr_indices.to(self.device), z)
             video_batch = self.x_latents
             video_labels = self.all_labels
@@ -258,7 +263,18 @@ class SinkhornTrainer:
     def train_on_batch(self, x, curr_indices, iter):
 
         self.optimizer.zero_grad()
-
+        '''
+        totalmem = 0
+        for obj in gc.get_objects():
+            try:
+                if torch.is_tensor(obj) or (hasattr(obj, 'data') and torch.is_tensor(obj.data)):
+                    mem = obj.nelement() * obj.element_size() / 1024 / 1024
+                    totalmem += mem
+                    print(type(obj), obj.size(), mem)
+            except:
+                pass
+        print(totalmem)
+        '''
         result = self.loss_on_batch(x, curr_indices, iter)
         result['loss'].backward()
         self.optimizer.step()

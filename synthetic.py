@@ -82,7 +82,6 @@ class GaussFlower(torch.utils.data.Dataset):
             idx = idx.tolist()
         return self.data[idx,:], self.labels[idx]
 
-    
 @gin.configurable('Snail')
 class Snail(torch.utils.data.Dataset):
     def __init__(self, train, n_points=50000,
@@ -187,13 +186,14 @@ def gaussflower(n_points, petals, seed = 0):
     gausspoints = np.vstack(gausspoints)
     return torch.tensor(gausspoints, dtype = torch.float)
 
-def gaussimplex(n_points, dim, seed = 0):
+@gin.configurable('Simplex')
+def gaussimplex(n_points, dim, var, seed = 0):
     random.seed(seed)
     n_points = n_points - n_points % dim
     single_num = int(n_points / dim)
     simplexpoints = []
     mean = np.zeros(dim)
-    cov = np.identity(dim) * 0.05
+    cov = np.identity(dim) * var
     for i in range(dim):
         v = np.zeros(dim)
         v[i] = 1
@@ -263,6 +263,6 @@ def disc(n_points, width, seed = 0):
 #plt.scatter(snailpoints[:,0], snailpoints[:,1])
 #plt.savefig("snailpoints.png")
 
-simplexpoints = gaussimplex(10000, 2)
-plt.scatter(simplexpoints[:,0], simplexpoints[:,1])
-plt.savefig("simplexpoints.png")
+#simplexpoints = gaussimplex(10000, 2)
+#plt.scatter(simplexpoints[:,0], simplexpoints[:,1])
+#plt.savefig("simplexpoints.png")
