@@ -186,7 +186,6 @@ def gaussflower(n_points, petals, seed = 0):
     gausspoints = np.vstack(gausspoints)
     return torch.tensor(gausspoints, dtype = torch.float)
 
-@gin.configurable('Simplex')
 def gaussimplex(n_points, dim, var, seed = 0):
     random.seed(seed)
     n_points = n_points - n_points % dim
@@ -201,6 +200,38 @@ def gaussimplex(n_points, dim, var, seed = 0):
         simplexpoints.append(points)
     simplexpoints = np.vstack(simplexpoints)
     return torch.tensor(simplexpoints, dtype = torch.float)
+
+def spheresimplex(n_points, dim, rad, seed = 0):
+    random.seed(seed)
+    n_points = n_points - n_points % dim
+    single_num = int(n_points / dim)
+    simplexpoints = []
+    mean = np.zeros(dim)
+    cov = np.identity(dim)
+    for i in range(dim):
+        v = np.zeros(dim)
+        v[i] = 1
+        points = np.random.multivariate_normal(mean, cov, single_num)
+        norm = np.linalg.norm(points, axis = 1)
+        points = (points / norm[:, np.newaxis]) * rad + v
+        simplexpoints.append(points)
+    simplexpoints = np.vstack(simplexpoints)
+    return torch.tensor(simplexpoints, dtype = torch.float)
+
+def simplexflower(n_points, dim, var, seed = 0):
+    random.seed(seed)
+    n_points = n_points - n_points % dim
+    single_num = int(n_points / dim)
+    simflpoints = []
+    for i in range(dim):
+        mean = np.zeros(dim)
+        mean[i] = 0.5
+        cov = np.identity(dim) * var
+        cov[i, i] = 0.1
+        points = np.random.multivariate_normal(mean, cov, single_num) 
+        simflpoints.append(points)
+    simflpoints = np.vstack(simflpoints)
+    return torch.tensor(simflpoints, dtype = torch.float)
 
 def snail(n_points, bend, width, dim, seed = 0):
     random.seed(seed)
@@ -256,13 +287,22 @@ def disc(n_points, width, seed = 0):
 #plt.savefig("flowerpoints.png")
 
 #gausspoints = gaussflower(10000, 10)
-#plt.scatter(gausspoints[:,0], gausspoints[:,1])
+#plt.scatter(gausspoints[:,0], gausspoints[:,1], c = 'navy')
 #plt.savefig("gausspoints.png")
 
 #snailpoints = snail(10000, 2, 1)
 #plt.scatter(snailpoints[:,0], snailpoints[:,1])
 #plt.savefig("snailpoints.png")
 
-#simplexpoints = gaussimplex(10000, 2)
-#plt.scatter(simplexpoints[:,0], simplexpoints[:,1])
-#plt.savefig("simplexpoints.png")
+simplexpoints = gaussimplex(10000, 10, 0.01)
+plt.scatter(simplexpoints[:,0], simplexpoints[:,1])
+plt.savefig("simplexpoints.png")
+
+#simflpoints = simplexflower(10000, 10, 0.005)
+#plt.scatter(simflpoints[:,3], simflpoints[:,9])
+#plt.savefig("simplexflower.png")
+
+#simspherepoints = spheresimplex(10000, 10, 1)
+#plt.scatter(simspherepoints[:,0], simspherepoints[:,1])
+#plt.savefig("simplexsphere.png")
+

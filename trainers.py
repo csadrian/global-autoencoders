@@ -22,7 +22,7 @@ class SinkhornTrainer:
     def __init__(self, model, device, batch_size, optimizer=gin.REQUIRED, distribution=gin.REQUIRED, reg_lambda=gin.REQUIRED, nat_size=None, 
                     train_loader=None, test_loader=None, trainer_type='global', monitoring = True, sinkhorn_scaling = 0.5, resampling_freq = 1, recalculate_freq = 1, 
                     reg_loss_type = 'sinkhorn', blur = None, trail_label_idx=0,
-                 full_backprop = False, rec_cost = 'mean', simplex_var = 0.05):
+                 full_backprop = False, rec_cost = 'mean', simplex_var = 0.05, sphererad = 0.5):
         self.model = model
         self.device = device
         self.distribution = distribution
@@ -45,6 +45,7 @@ class SinkhornTrainer:
         self.rec_cost = rec_cost
 
         self.simplex_var = simplex_var
+        self.sphererad = sphererad
         
         #In the local, no monitoring case, generate video and covered area from fixed batch.
         _, (self.trail_batch, self.trail_labels, _) = enumerate(self.train_loader).__next__()
@@ -124,6 +125,16 @@ class SinkhornTrainer:
             seed = np.random.randint(0, 10000)
             #ONLY 2-dim
             sample = synthetic.gaussimplex(n, 10, self.simplex_var, seed)
+            return sample
+        elif self.distribution == 'simplexflower':
+            seed = np.random.randint(0, 10000)
+            #ONLY 2-dim
+            sample = synthetic.simplexflower(n, 10, self.simplex_var, seed)
+            return sample
+        elif self.distribution == 'simplexsphere':
+            seed = np.random.randint(0, 10000)
+            #ONLY 2-dim
+            sample = synthetic.spheresimplex(n, 10, self.sphererad, seed)
             return sample
         elif self.distribution == 'uniform':
             base_dist = torch.distributions.uniform.Uniform(-torch.ones(self.model.z_dim), torch.ones(self.model.z_dim))
@@ -243,6 +254,7 @@ class SinkhornTrainer:
 
             reg_loss = self.reg_loss_fn(z_prime, self.pz_sample.detach())  # By default, use constant weights = 1/number of samples
             loss = bce + float(self.reg_lambda) * reg_loss
+            #loss = float(self.reg_lambda) * reg_loss
         else:
             z_prime = z
             loss = bce.clone()

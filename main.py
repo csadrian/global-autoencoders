@@ -45,7 +45,7 @@ from networkx.algorithms.matching import max_weight_matching
 class ExperimentRunner():
 
 
-    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=None, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, num_iterations= None,  prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0, full_video = False, input_normalize_sym = False):
+    def __init__(self, seed=1, no_cuda=False, num_workers=2, epochs=None, log_interval=100, plot_interval=1000, outdir='out', datadir='~/datasets', batch_size=200, num_iterations= None,  prefix='', dataset='mnist', ae_model_class=gin.REQUIRED, resampling_freq = 1, recalculate_freq = 1, limit_train_size=None, trail_label_idx=0, full_video = False, input_normalize_sym = False, projone = 0, projtwo = 1):
         self.seed = seed
         self.no_cuda = no_cuda
         self.num_workers = num_workers
@@ -68,6 +68,8 @@ class ExperimentRunner():
         self.trail_label_idx = trail_label_idx
         self.full_video = full_video
         self.input_normalize_sym = input_normalize_sym
+        self.projone = projone
+        self.projtwo = projtwo
         
         self.setup_environment()
         self.setup_torch()
@@ -171,9 +173,9 @@ class ExperimentRunner():
         av = 0
         for j in range(10):
             points = np.asarray(points_as_vertex[j])
-            M = np.identity(10) * math.sqrt(20)
+            M = np.identity(10) * math.sqrt(1 / self.trainer.simplex_var)
             v = np.zeros(10)
-            v[j] = math.sqrt(20)
+            v[j] = math.sqrt(1 / self.trainer.simplex_var)
             points = np.matmul(points, M) - v
             points = norm.cdf(points) * 2 - 1
             av += visual.covered_area(points[:,:2])
@@ -298,8 +300,9 @@ class ExperimentRunner():
         #colordict = {0 : 'black', 1 : 'brown', 2 : 'b', 3 : 'cyan', 4 : 'g', 5 : 'lime', 6 : 'm', 7 : 'r', 8 : 'orange', 9 : 'y'}
         #for k in range(len(test_encode)):
         #    plt.scatter(test_encode[k, 0], test_encode[k, 1], c=colordict[test_targets[k]])
-        plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
-        #plt.colorbar()
+        #plt.scatter(test_encode[:, 0], test_encode[:, 1], c=(10 * test_targets), cmap=plt.cm.Spectral)
+        plt.scatter(test_encode[:, self.projone], test_encode[:, self.projtwo], c=(10 * test_targets), cmap=plt.cm.Spectral)
+        plt.colorbar()
         if self.trainer.distribution == 'gaussflower':
             plt.xlim([-6, 6])
             plt.ylim([-6, 6])
@@ -397,10 +400,11 @@ class ExperimentRunner():
                 else:
                     pair_weight += labels_as_petals[pairing[i][0]][pairing[i][1] - 10]
 
-        if self.distribution == 'gaussimplex':
+        if self.distribution in ('gaussimplex', 'simplexsphere'):
             _, indices = self.split_to_vertex(full_test_encode)
             labels_as_vertex = np.zeros((10, 10))
             for i in range(10):
+                print(len(indices[i]))
                 for idx in indices[i]:
                     labels_as_vertex[i][test_targets[idx]] += 1
             p = [i for i in range(10)]
@@ -442,7 +446,7 @@ class ExperimentRunner():
         neptune.send_metric('test_rec_loss', x=self.global_iters, y=test_rec_loss)
         neptune.send_metric('test_covered_area', x=self.global_iters, y=covered)
         neptune.send_metric('ratio_good_nn', x=self.global_iters, y=ratio)
-        if self.distribution in ('gaussflower', 'gaussimplex'):
+        if self.distribution in ('gaussflower', 'gaussimplex', 'simplexsphere'):
             neptune.send_metric('cluster_matching', x=self.global_iters, y=pair_weight)
             #neptune.send_metric('test_covered_neighbor', x=self.global_iters, y=ratio_neighbor)
         if len(test_targets.shape) == 2:
