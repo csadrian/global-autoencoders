@@ -5,6 +5,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch.nn.init as init
 from torch.autograd import Variable
+from torch.nn.utils import spectral_norm
 
 import gin
 
@@ -384,6 +385,111 @@ class MlpModel(nn.Module):
         else:
             return F.sigmoid(xd)
 
+
+@gin.configurable(blacklist=["input_normalize_sym"])
+class MlpSpecNormModel(nn.Module):
+    """Encoder-Decoder architecture for MNIST-like datasets."""
+    def __init__(self, z_dim=10, nc=1, input_dims=(28, 28, 1),
+                 distribution=gin.REQUIRED,
+                 input_normalize_sym=False,
+                 e_num_layers=gin.REQUIRED,
+                 g_num_layers=gin.REQUIRED,
+                 e_num_filters=gin.REQUIRED,
+                 g_num_filters=gin.REQUIRED,
+                 batch_norm=gin.REQUIRED):
+        super(MlpSpecNormModel, self).__init__()
+        self.input_dims = input_dims
+        self.e_num_filters = e_num_filters
+        self.g_num_filters = g_num_filters
+        self.e_num_layers = e_num_layers
+        self.g_num_layers = g_num_layers
+
+        self.batch_norm = batch_norm
+        self.z_dim = z_dim
+        self.nc = nc
+        self.distribution = distribution
+        self.input_normalize_sym = input_normalize_sym
+
+        self.encoder = self.build_encoder_layers()
+        self.decoder = self.build_decoder_layers()
+
+        self.weight_init()
+
+    def build_encoder_layers(self):
+        self.encoder_layers = []
+
+        #channels = self.input_dims[2]
+        input_dim = np.prod(self.input_dims)
+        output_dim = self.e_num_filters
+
+        self.encoder_layers.append(nn.Flatten())
+
+        for i in range(self.e_num_layers):
+            self.encoder_layers.append(spectral_norm(nn.Linear(input_dim, output_dim)))
+            if self.batch_norm:
+                self.encoder_layers.append(nn.BatchNorm1d(output_dim))
+            self.encoder_layers.append(nn.ReLU(True))
+            input_dim = output_dim
+
+        self.encoder_layers.append(nn.Linear(input_dim, self.z_dim))
+
+        return nn.Sequential(*self.encoder_layers)
+
+    def build_decoder_layers(self):
+
+        self.decoder_layers = []
+
+        input_dim = self.z_dim
+        output_dim = self.g_num_filters
+
+        for i in range(self.g_num_layers):
+            self.decoder_layers.append(nn.Linear(input_dim, output_dim))
+            if self.batch_norm:
+                self.decoder_layers.append(nn.BatchNorm1d(output_dim))
+                
+            self.decoder_layers.append(nn.ReLU(True))
+            input_dim = output_dim
+
+        self.decoder_layers.append(nn.Linear(input_dim, np.prod(self.input_dims)))
+        if len(self.input_dims) < 3:
+            self.decoder_layers.append(View((-1, *self.input_dims)))
+        else:
+            channels = self.input_dims[2]
+            size = self.input_dims[:2]
+            self.decoder_layers.append(View((-1, channels, *size)))
+
+        return nn.Sequential(*self.decoder_layers)
+
+
+    def weight_init(self):
+        for block in self._modules:
+            for m in self._modules[block]:
+                kaiming_init(m)
+
+    def forward(self, x):
+        z = self._encode(x)
+        x_recon = self._decode(z)
+        return x_recon, z
+
+    def _encode(self, x):
+        x = self.encoder(x)
+
+        if self.distribution == "sphere":
+            x = F.normalize(x, dim=1, p=2)
+
+        return x
+
+
+    def _decode(self, z):
+
+        xd = z
+        xd = self.decoder(xd)
+
+        if self.input_normalize_sym:
+            return F.tanh(xd)
+        else:
+            return F.sigmoid(xd)
+        
 
 @gin.configurable(blacklist=["input_normalize_sym"])
 class MnistModel(nn.Module):

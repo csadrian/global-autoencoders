@@ -1,7 +1,7 @@
 ExperimentRunner.dataset = 'mnist'
 ExperimentRunner.ae_model_class = @models.MlpModel
 ExperimentRunner.batch_size = 100
-ExperimentRunner.epochs = 50
+ExperimentRunner.epochs = 5
 
 models.MlpModel.z_dim=2 #4 in MMD
 models.MlpModel.distribution='gaussflower'
@@ -20,7 +20,7 @@ torch.optim.Adam.betas=(0.5, 0.999)
 SinkhornTrainer.full_backprop = False
 SinkhornTrainer.resampling_freq = 1
 SinkhornTrainer.recalculate_freq = 1
-SinkhornTrainer.reg_lambda = 100
-SinkhornTrainer.trainer_type = 'global'
+SinkhornTrainer.reg_lambda = 0.1
+SinkhornTrainer.trainer_type = 'local'
 SinkhornTrainer.monitoring = False
 SinkhornTrainer.sinkhorn_scaling = 0.7

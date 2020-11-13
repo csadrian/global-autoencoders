@@ -309,7 +309,7 @@ class ExperimentRunner():
         else:
             plt.xlim([-1.5, 1.5])
             plt.ylim([-1.5, 1.5])
-        plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
+        #plt.title('Test Latent Space\nLoss: {:.5f}'.format(test_loss))
         filename = '{}/test_latent_epoch_{}.pdf'.format(self.imagesdir, self.epoch + 1)
         plt.savefig(filename)        
         filename = '{}/test_latent_epoch_{}.png'.format(self.imagesdir, self.epoch + 1)
