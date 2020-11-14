@@ -425,7 +425,7 @@ class MlpSpecNormModel(nn.Module):
         self.encoder_layers.append(nn.Flatten())
 
         for i in range(self.e_num_layers):
-            self.encoder_layers.append(spectral_norm(nn.Linear(input_dim, output_dim)))
+            self.encoder_layers.append(nn.Linear(input_dim, output_dim))
             if self.batch_norm:
                 self.encoder_layers.append(nn.BatchNorm1d(output_dim))
             self.encoder_layers.append(nn.ReLU(True))
@@ -443,7 +443,7 @@ class MlpSpecNormModel(nn.Module):
         output_dim = self.g_num_filters
 
         for i in range(self.g_num_layers):
-            self.decoder_layers.append(nn.Linear(input_dim, output_dim))
+            self.decoder_layers.append(spectral_norm(nn.Linear(input_dim, output_dim)))
             if self.batch_norm:
                 self.decoder_layers.append(nn.BatchNorm1d(output_dim))
                 
